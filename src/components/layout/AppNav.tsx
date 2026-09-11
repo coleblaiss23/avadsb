@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/Logo";
-import { TOOL_NAV } from "@/lib/tools-nav";
+import { VISIBLE_TOOL_NAV } from "@/lib/tools-nav";
 import { cn } from "@/lib/utils";
 
 type AppNavProps = {
@@ -40,7 +40,7 @@ export function AppNav({ variant = "tools", rightSlot }: AppNavProps) {
           >
             Radar
           </Link>
-          {TOOL_NAV.map((item) => {
+          {VISIBLE_TOOL_NAV.map((item) => {
             const active =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href));
@@ -71,7 +71,7 @@ export function AppNav({ variant = "tools", rightSlot }: AppNavProps) {
         >
           Radar
         </Link>
-        {TOOL_NAV.map((item) => {
+        {VISIBLE_TOOL_NAV.map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));

@@ -6,6 +6,8 @@ export type ToolNavItem = {
   title: string;
   short: string;
   subtitle: string;
+  /** Hidden from nav/sidebar until real fuel data is ready. */
+  disabled?: boolean;
 };
 
 export const TOOL_NAV: ToolNavItem[] = [
@@ -15,6 +17,7 @@ export const TOOL_NAV: ToolNavItem[] = [
     title: "Corridor Fuel Matrix",
     short: "Fuel",
     subtitle: "Cheapest 100LL / Jet-A along route",
+    disabled: true,
   },
   {
     id: "atis",
@@ -35,7 +38,7 @@ export const TOOL_NAV: ToolNavItem[] = [
     href: "/quiz",
     title: "FAA Ground School Quiz",
     short: "Quiz",
-    subtitle: "Private, Instrument, Commercial, CFI"
+    subtitle: "Private, Instrument, Commercial, CFI",
   },
   {
     id: "squawk",
@@ -52,3 +55,6 @@ export const TOOL_NAV: ToolNavItem[] = [
     subtitle: "Wet / dry flight cost split",
   },
 ];
+
+/** Use this in nav/sidebar UI — filters out tools not ready for launch. */
+export const VISIBLE_TOOL_NAV = TOOL_NAV.filter((item) => !item.disabled);

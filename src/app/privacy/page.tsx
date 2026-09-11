@@ -38,18 +38,17 @@ export default function PrivacyPage() {
             <p>
               If you submit a crowdsourced fuel price, we store the airport
               identifier, the fuel type, the price, whether you marked it
-              self-serve, an optional FBO name you typed, and the time of the
-              report. We do not ask for a name, email, tail number, or certificate
-              number. Today those reports live in server memory so the site can
-              show a recent pilot report. They are not written to a database and
-              are discarded when the process restarts.
+              self-serve, an optional FBO name and notes you typed, and the
+              time of the report, in our database. We do not ask for a name,
+              email, tail number, or certificate number, and we never attach
+              your IP address to the stored report.
             </p>
             <p>
-              Your IP address is read only to apply a short in-memory rate limit
-              on public API routes (including fuel reports). It is not attached
-              to the price record, not stored in a database, and not sent to
-              advertisers. The rate-limit window is discarded when the server
-              restarts.
+              Your IP address is read only to apply a short rate limit on
+              public API routes (including fuel reports), so one visitor can't
+              flood the system with reports. It is never written to the
+              database alongside your submitted price, and is not sent to
+              advertisers.
             </p>
           </section>
 

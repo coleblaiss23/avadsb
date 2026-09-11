@@ -30,7 +30,10 @@ export function AirportNotamFlag({
   const count = query.data?.notams.length ?? 0;
   if (!query.data || count === 0) return null;
 
-  const demo = query.data.source === "demo";
+  // Demo NOTAMs are placeholder data (no FAA_NOTAM_CLIENT_ID/SECRET configured).
+  // Never show them as if they were real — hide this flag entirely until a
+  // live FAA feed is wired up.
+  if (query.data.source === "demo") return null;
 
   return (
     <Link
@@ -40,7 +43,6 @@ export function AirportNotamFlag({
       <span>
         {role ? `${role} ` : ""}
         {code} · {count} NOTAM{count === 1 ? "" : "s"}
-        {demo ? " · demo" : ""}
       </span>
       <span className="text-[var(--ink-muted)]">
         {briefingTag(query.data.fetchedAt, query.data.source)}

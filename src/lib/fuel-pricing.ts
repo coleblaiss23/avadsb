@@ -67,7 +67,6 @@ async function fetchAirNavPrice(
 
   const endpoint = process.env.AIRNAV_API_URL;
   if (!endpoint) {
-    // Key present but no endpoint — treat as unavailable
     return null;
   }
 
@@ -237,6 +236,12 @@ export async function resolveFuelPrices(
   return map;
 }
 
+/**
+ * Records a pilot-submitted price. The reporter's IP is accepted here only so
+ * callers keep a consistent signature with the rate limiter — it is never
+ * written to Supabase or attached to the stored record, matching the privacy
+ * policy's promise.
+ */
 export async function recordCrowdPrice(
   input: Omit<FuelPrice, "id" | "source" | "updatedAt"> & {
     id?: string;
@@ -270,7 +275,6 @@ export async function recordCrowdPrice(
       is_self_serve: input.isSelfServe,
       fbo_name: fboName,
       notes,
-      reporter_ip: input.reporterIp?.trim() || null,
     }),
   });
   if (!res.ok) {

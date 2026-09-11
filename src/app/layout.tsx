@@ -14,7 +14,6 @@ import {
   siteOrigin,
 } from "@/lib/site";
 import { Providers } from "./providers";
-import { Footer } from "@/components/layout/Footer";
 import "./globals.css";
 
 const ibmPlex = IBM_Plex_Sans({
