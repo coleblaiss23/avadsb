@@ -69,6 +69,43 @@ export function crosswindWarning(crosswindKt: number): {
 }
 
 /**
+ * Rank runway ends for landing/takeoff into the wind.
+ * Prefer headwind, then lower crosswind.
+ */
+export function rankRunwaysForWind(
+  ends: AirportRunwayEnd[],
+  windDirDeg: number,
+  windSpeedKt: number
+): Array<AirportRunwayEnd & WindComponents & { recommended: boolean }> {
+  const ranked = ends
+    .map((end) => {
+      const c = computeWindComponents(
+        windDirDeg,
+        windSpeedKt,
+        end.headingDegT
+      );
+      return { ...end, ...c };
+    })
+    .sort((a, b) => {
+      // Into-the-wind (headwind) beats tailwind
+      const aHw = a.headwindKt >= 0 ? 1 : 0;
+      const bHw = b.headwindKt >= 0 ? 1 : 0;
+      if (aHw !== bHw) return bHw - aHw;
+      if (b.headwindKt !== a.headwindKt) return b.headwindKt - a.headwindKt;
+      return a.crosswindKt - b.crosswindKt;
+    });
+
+  const bestHw = ranked[0]?.headwindKt ?? 0;
+  return ranked.map((row, i) => ({
+    ...row,
+    // Mark the best into-wind end(s): top pick, or ties within 2 kt headwind of best
+    recommended:
+      row.headwindKt >= 0 &&
+      (i === 0 || bestHw - row.headwindKt <= 2),
+  }));
+}
+
+/**
  * Build runway ends from airport catalog (runways[]) or fall back to runwayIdent.
  */
 export function runwayEndsForAirport(airport: Airport): AirportRunwayEnd[] {

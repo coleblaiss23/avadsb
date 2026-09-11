@@ -115,10 +115,11 @@ export async function GET(request: Request) {
     });
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: "Route lookup unavailable", route: null },
-        { status: 502 }
-      );
+      return NextResponse.json({
+        error: "Route lookup unavailable",
+        route: null,
+        source: "demo",
+      });
     }
 
     const route = parseRoute(await res.json(), callsign);
@@ -128,12 +129,10 @@ export async function GET(request: Request) {
       { headers: { "Cache-Control": "public, s-maxage=300" } }
     );
   } catch (err) {
-    return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : "Route lookup failed",
-        route: null,
-      },
-      { status: 502 }
-    );
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : "Route lookup failed",
+      route: null,
+      source: "demo",
+    });
   }
 }

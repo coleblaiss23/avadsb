@@ -201,8 +201,8 @@ export function useLiveTraffic(enabled: boolean, point: QueryPoint | null) {
     ],
     queryFn: () => fetchTraffic(fetchPoint!),
     enabled: canFetch,
-    refetchInterval: shouldPoll ? 6_000 : false,
-    staleTime: 4_000,
+    refetchInterval: shouldPoll ? 4_000 : false,
+    staleTime: 2_500,
     placeholderData: (previous) => previous,
     retry: 1,
   });

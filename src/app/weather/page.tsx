@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "ATIS & Plain METAR",
   description:
     "Live flight category, density altitude, and plain-English METAR token decode for any US airport.",
+  alternates: { canonical: "/weather" },
 };
 
 export default function WeatherIndexPage() {

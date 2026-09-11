@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { Search } from "lucide-react";
 import { AirportAutocomplete } from "@/components/planner/AirportAutocomplete";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import { usePlannerStore } from "@/store/planner-store";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -50,6 +51,11 @@ export function RoutePlannerForm() {
         const result = data as RouteOptimizationResult;
         setResult(result);
         setSelectedStop(result.candidates[0]?.airport.icao ?? null);
+        track(ANALYTICS_EVENTS.fuelSearch, {
+          origin: input.originIcao,
+          destination: input.destinationIcao,
+          fuelType: input.fuelType,
+        });
       } catch (err) {
         setResult(null);
         setError(err instanceof Error ? err.message : "Calculation failed");

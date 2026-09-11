@@ -31,8 +31,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const origin = await resolveAirport(body.originIcao);
-  const destination = await resolveAirport(body.destinationIcao);
+  let origin;
+  let destination;
+  try {
+    origin = await resolveAirport(body.originIcao);
+    destination = await resolveAirport(body.destinationIcao);
+  } catch {
+    return NextResponse.json(
+      { error: "Airport lookup unavailable", source: "demo" },
+      { status: 503 }
+    );
+  }
   if (!origin || !destination) {
     return NextResponse.json(
       { error: "Unknown origin or destination airport" },
@@ -47,7 +56,15 @@ export async function POST(request: Request) {
   const destPt = { lat: destination.latitude, lng: destination.longitude };
   const corridor = buildCorridor(originPt, destPt, maxDetourNm);
 
-  const eligible = await getFuelEligibleAirports();
+  let eligible;
+  try {
+    eligible = await getFuelEligibleAirports();
+  } catch {
+    return NextResponse.json(
+      { error: "Airport lookup unavailable", source: "demo" },
+      { status: 503 }
+    );
+  }
   const inCorridor = eligible.filter((a) => {
     if (a.icao === origin.icao || a.icao === destination.icao) return false;
     return isWithinCorridor(
@@ -65,7 +82,7 @@ export async function POST(request: Request) {
   const withFuel: AirportWithFuel[] = await Promise.all(
     toPrice.map(async (a) => ({
       ...a,
-      fuel: await resolveFuelPrice(a.icao, fuelType),
+      fuel: await resolveFuelPrice(a.icao, fuelType).catch(() => null),
     }))
   );
 

@@ -5,7 +5,9 @@
 -- 2. SQL Editor → run this file
 -- 3. Import airports: node scripts/build-us-airports.mjs then load JSON via
 --    COPY / ETL, or use the app's public/data/us-airports.json for local demo
--- 4. Set AIRNAV_API_KEY (+ optional AIRNAV_API_URL) in project secrets
+-- 4. Seed launch prices: fill scripts/fuel-prices-seed.json, then
+--    npm run seed:fuel
+-- 5. Set AIRNAV_API_KEY (+ optional AIRNAV_API_URL) in project secrets
 -- =============================================================================
 
 CREATE EXTENSION IF NOT EXISTS postgis;
@@ -134,6 +136,48 @@ CREATE POLICY "Public read airports"
 CREATE POLICY "Public read fuel_prices"
   ON public.fuel_prices FOR SELECT TO anon, authenticated USING (true);
 
+-- Pilots submitting fuel prices are not logged in. The public `anon` role
+-- may INSERT. UPDATE/DELETE stay denied (no policy, and revoked below).
+-- SELECT is withheld from anon because rows store reporter_ip.
+-- The Next.js server reads and writes with the service role, which bypasses RLS.
+DROP POLICY IF EXISTS "Anon insert price_reports" ON public.price_reports;
 CREATE POLICY "Anon insert price_reports"
   ON public.price_reports FOR INSERT TO anon, authenticated
   WITH CHECK (true);
+
+REVOKE SELECT, UPDATE, DELETE ON TABLE public.price_reports FROM anon, authenticated, PUBLIC;
+GRANT INSERT ON TABLE public.price_reports TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.price_reports TO service_role;
+
+-- =============================================================================
+-- MIGRATION-STYLE ADDITION (do not re-run the whole file if already applied)
+-- Opt-in “track my flight” share links — random token id, hard 24h expiry.
+-- Run from here down on existing projects.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.flight_track_shares (
+  id           text PRIMARY KEY,
+  tail_number  text NOT NULL,
+  label        text,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz NOT NULL DEFAULT (now() + interval '24 hours'),
+  CONSTRAINT flight_track_shares_id_len CHECK (char_length(id) >= 16),
+  CONSTRAINT flight_track_shares_tail_len CHECK (
+    char_length(tail_number) >= 2 AND char_length(tail_number) <= 12
+  ),
+  CONSTRAINT flight_track_shares_label_len CHECK (
+    label IS NULL OR char_length(label) <= 80
+  )
+);
+
+CREATE INDEX IF NOT EXISTS flight_track_shares_expires_idx
+  ON public.flight_track_shares (expires_at);
+CREATE INDEX IF NOT EXISTS flight_track_shares_tail_idx
+  ON public.flight_track_shares (tail_number);
+
+ALTER TABLE public.flight_track_shares ENABLE ROW LEVEL SECURITY;
+
+-- Public clients never talk to this table directly; the Next.js server uses
+-- the service role. No anon policies on purpose.
+REVOKE ALL ON TABLE public.flight_track_shares FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.flight_track_shares TO service_role;

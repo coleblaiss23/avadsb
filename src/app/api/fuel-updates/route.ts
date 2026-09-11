@@ -47,7 +47,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const airport = await resolveAirport(b.airportIcao);
+  let airport;
+  try {
+    airport = await resolveAirport(b.airportIcao);
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Airport lookup failed." } satisfies PriceReportResponse,
+      { status: 503 }
+    );
+  }
   if (!airport) {
     return NextResponse.json(
       { success: false, message: "Unknown airport." } satisfies PriceReportResponse,
@@ -55,13 +63,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const saved = recordCrowdPrice({
-    airportIcao: airport.icao,
-    fboName: b.fboName?.trim() || "Crowdsourced",
-    fuelType: b.fuelType as FuelType,
-    pricePerGallon: Math.round(b.reportedPrice * 100) / 100,
-    isSelfServe: b.isSelfServe,
-  });
+  let saved;
+  try {
+    saved = await recordCrowdPrice({
+      airportIcao: airport.icao,
+      fboName: b.fboName?.trim() || "Crowdsourced",
+      fuelType: b.fuelType as FuelType,
+      pricePerGallon: Math.round(b.reportedPrice * 100) / 100,
+      isSelfServe: b.isSelfServe,
+      notes: b.notes,
+      reporterIp: ip,
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Could not record the report." } satisfies PriceReportResponse,
+      { status: 503 }
+    );
+  }
 
   return NextResponse.json(
     {

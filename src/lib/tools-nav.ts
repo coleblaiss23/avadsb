@@ -35,7 +35,7 @@ export const TOOL_NAV: ToolNavItem[] = [
     href: "/quiz",
     title: "FAA Ground School Quiz",
     short: "Quiz",
-    subtitle: "Private Pilot knowledge practice",
+    subtitle: "Private, Instrument, Commercial, CFI"
   },
   {
     id: "squawk",

@@ -1,0 +1,4 @@
+[
+  "_comment": "Optional FAA LADD / privacy registrations. Add tail numbers (e.g. \"N123AB\") to refuse track-share links. Official Industry LADD is distributed via FAA ADX — this file is a local override only. airplanes.live / adsb.lol do not filter LADD.",
+  "registrations": []
+]

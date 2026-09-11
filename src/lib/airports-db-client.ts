@@ -1,4 +1,27 @@
 /** Client-safe re-exports (no fs). */
+/** ICAOs the airport and weather pages prebuild. The pages still resolve any field in the airport DB. */
+export const FEATURED_AIRPORT_ICAOS = [
+  "KDEN",
+  "KLAX",
+  "KJFK",
+  "KORD",
+  "KTEB",
+  "KBFI",
+] as const;
+
+export function featuredAirportIcaos(): string[] {
+  return Array.from(
+    new Set<string>([
+      ...POPULAR_ROUTES.flatMap((r) => [r.origin, r.destination]),
+      ...FEATURED_AIRPORT_ICAOS,
+    ])
+  );
+}
+
+export function featuredAirportParams(): { icao: string }[] {
+  return featuredAirportIcaos().map((icao) => ({ icao: icao.toLowerCase() }));
+}
+
 export const POPULAR_ROUTES = [
   {
     origin: "KAPA",

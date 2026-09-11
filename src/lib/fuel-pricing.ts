@@ -1,7 +1,11 @@
-import type { FuelPrice, FuelPriceSource, FuelType } from "@/types";
-
-/** In-memory crowdsourced reports (swap for Supabase in production). */
-const crowdReports: FuelPrice[] = [];
+import "server-only";
+import { resolveAirport } from "@/lib/airports-db";
+import {
+  isSupabaseConfigured,
+  readSupabaseError,
+  supabaseAdminFetch,
+} from "@/lib/supabase-admin";
+import type { Airport, FuelPrice, FuelPriceSource, FuelType } from "@/types";
 
 function hash01(seed: string): number {
   let h = 2166136261;
@@ -25,6 +29,10 @@ const FBO_NAMES = [
 
 function hoursAgoIso(hours: number): string {
   return new Date(Date.now() - hours * 3600_000).toISOString();
+}
+
+export function demoFuelPrice(icao: string, fuelType: FuelType): FuelPrice {
+  return syntheticPrice(icao, fuelType);
 }
 
 function syntheticPrice(icao: string, fuelType: FuelType): FuelPrice {
@@ -94,49 +102,127 @@ async function fetchAirNavPrice(
   }
 }
 
-function latestCrowdPrice(
+type PriceReportRow = {
+  id: string;
+  airport_icao: string;
+  fuel_type: FuelType;
+  reported_price: number | string;
+  is_self_serve: boolean;
+  fbo_name: string | null;
+  created_at: string;
+};
+
+function rowToCrowdPrice(row: PriceReportRow): FuelPrice {
+  const price = Number(row.reported_price);
+  return {
+    id: row.id,
+    airportIcao: row.airport_icao,
+    fboName: row.fbo_name?.trim() || "Crowdsourced",
+    fuelType: row.fuel_type,
+    pricePerGallon: Math.round(price * 100) / 100,
+    isSelfServe: Boolean(row.is_self_serve),
+    source: "Pilot_Crowdsource",
+    updatedAt: row.created_at,
+  };
+}
+
+async function ensureAirportRow(airport: Airport): Promise<void> {
+  const res = await supabaseAdminFetch("airports?on_conflict=icao", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "resolution=ignore-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      icao: airport.icao,
+      faa: airport.faa || null,
+      ident: airport.ident || airport.icao,
+      name: airport.name,
+      city: airport.city || null,
+      state: airport.state || null,
+      latitude: airport.latitude,
+      longitude: airport.longitude,
+      elevation: airport.elevation ?? null,
+      runway_length: airport.runwayLength || null,
+      runway_width: airport.runwayWidth || null,
+      runway_ident: airport.runwayIdent || null,
+      surface_type: airport.surface || null,
+      facility_type: airport.type || null,
+    }),
+  });
+  if (res.ok || res.status === 409) return;
+  const message = await readSupabaseError(res);
+  if (message.includes("23505")) return;
+  throw new Error(`Could not ensure airport ${airport.icao}: ${message}`);
+}
+
+/**
+ * Newest pilot report for this airport + fuel type within maxAgeMs.
+ * Reads public.price_reports. Returns null when Supabase is unset or has no match.
+ */
+async function latestCrowdPrice(
   icao: string,
   fuelType: FuelType,
   maxAgeMs: number
-): FuelPrice | null {
-  const now = Date.now();
-  const matches = crowdReports
-    .filter(
-      (r) =>
-        r.airportIcao === icao &&
-        r.fuelType === fuelType &&
-        now - new Date(r.updatedAt).getTime() <= maxAgeMs
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+): Promise<FuelPrice | null> {
+  if (!isSupabaseConfigured()) return null;
+
+  const since = new Date(Date.now() - maxAgeMs).toISOString();
+  const query = new URLSearchParams({
+    select:
+      "id,airport_icao,fuel_type,reported_price,is_self_serve,fbo_name,created_at",
+    airport_icao: `eq.${icao}`,
+    fuel_type: `eq.${fuelType}`,
+    created_at: `gte.${since}`,
+    order: "created_at.desc",
+    limit: "1",
+  });
+
+  try {
+    const res = await supabaseAdminFetch(`price_reports?${query.toString()}`);
+    if (!res.ok) {
+      console.warn(
+        `[fuel-pricing] crowd price lookup failed (${res.status}); falling through`
+      );
+      return null;
+    }
+    const rows = (await res.json()) as PriceReportRow[];
+    const row = rows[0];
+    if (!row) return null;
+    return rowToCrowdPrice(row);
+  } catch (err) {
+    console.warn(
+      "[fuel-pricing] crowd price lookup failed; falling through",
+      err instanceof Error ? err.message : ""
     );
-  return matches[0] ?? null;
+    return null;
+  }
 }
 
 const SEVENTY_TWO_HOURS = 72 * 3600_000;
 
 /**
- * Fallback pricing strategy:
+ * Pricing strategy (no synthetic quotes):
  * 1. AirNav / FBO API
- * 2. Crowd-verified pilot submissions ≤ 72h
- * 3. Deterministic demo synthetic quote
+ * 2. Supabase crowd reports (price_reports) ≤ 72h
+ * Returns null when neither source has a real price.
  */
 export async function resolveFuelPrice(
   icao: string,
   fuelType: FuelType
-): Promise<FuelPrice> {
+): Promise<FuelPrice | null> {
   const code = icao.toUpperCase();
 
   const live = await fetchAirNavPrice(code, fuelType);
   if (live) return live;
 
-  const crowd = latestCrowdPrice(code, fuelType, SEVENTY_TWO_HOURS);
+  const crowd = await latestCrowdPrice(code, fuelType, SEVENTY_TWO_HOURS);
   if (crowd) return { ...crowd, source: "Pilot_Crowdsource" };
 
-  return syntheticPrice(code, fuelType);
+  return null;
 }
 
+/** Only includes airports that have a verified (non-demo) price. */
 export async function resolveFuelPrices(
   icaos: string[],
   fuelType: FuelType
@@ -144,31 +230,59 @@ export async function resolveFuelPrices(
   const map = new Map<string, FuelPrice>();
   await Promise.all(
     icaos.map(async (icao) => {
-      map.set(icao.toUpperCase(), await resolveFuelPrice(icao, fuelType));
+      const price = await resolveFuelPrice(icao, fuelType);
+      if (price) map.set(icao.toUpperCase(), price);
     })
   );
   return map;
 }
 
-export function recordCrowdPrice(
+export async function recordCrowdPrice(
   input: Omit<FuelPrice, "id" | "source" | "updatedAt"> & {
     id?: string;
+    notes?: string;
+    reporterIp?: string;
   }
-): FuelPrice {
-  const price: FuelPrice = {
-    id: input.id ?? `crowd-${Date.now()}`,
-    airportIcao: input.airportIcao.toUpperCase(),
-    fboName: input.fboName,
-    fuelType: input.fuelType,
-    pricePerGallon: input.pricePerGallon,
-    isSelfServe: input.isSelfServe,
-    source: "Pilot_Crowdsource",
-    updatedAt: new Date().toISOString(),
-  };
-  crowdReports.unshift(price);
-  // Cap memory
-  if (crowdReports.length > 5000) crowdReports.length = 5000;
-  return price;
+): Promise<FuelPrice> {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const airportIcao = input.airportIcao.toUpperCase();
+  const airport = await resolveAirport(airportIcao);
+  if (!airport) {
+    throw new Error(`Unknown airport ${airportIcao}`);
+  }
+  await ensureAirportRow(airport);
+
+  const fboName = input.fboName.trim().slice(0, 120) || "Crowdsourced";
+  const notes = input.notes?.trim().slice(0, 1000) || null;
+  const res = await supabaseAdminFetch("price_reports", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      airport_icao: airport.icao,
+      fuel_type: input.fuelType,
+      reported_price: input.pricePerGallon,
+      is_self_serve: input.isSelfServe,
+      fbo_name: fboName,
+      notes,
+      reporter_ip: input.reporterIp?.trim() || null,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(await readSupabaseError(res));
+  }
+
+  const rows = (await res.json()) as PriceReportRow[];
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Supabase did not return the saved price report");
+  }
+  return rowToCrowdPrice(row);
 }
 
 export function formatPriceAge(updatedAt: string): string {

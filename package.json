@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "build:airports": "node scripts/build-us-airports.mjs"
+    "build:airports": "node scripts/build-us-airports.mjs",
+    "build:airspace": "node scripts/build-class-airspace.mjs",
+    "seed:fuel": "node scripts/seed-fuel-prices.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -24,6 +26,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-leaflet": "^5.0.0",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.15"
   },

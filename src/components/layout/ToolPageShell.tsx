@@ -34,7 +34,7 @@ export function ToolPageShell({
         : "max-w-5xl";
 
   return (
-    <div className="night-ui tool-atmosphere flex min-h-dvh flex-col">
+    <div className="night-ui tool-atmosphere flex min-h-0 flex-1 flex-col">
       <AppNav rightSlot={rightSlot} />
       <main className={cn("relative flex-1 px-4 py-8 sm:py-10", className)}>
         <div className={cn("mx-auto", max)}>
@@ -51,12 +51,6 @@ export function ToolPageShell({
           {children}
         </div>
       </main>
-      <footer className="border-t border-[var(--ink-border)] bg-[var(--ink)] px-4 py-3">
-        <p className="mx-auto max-w-[1600px] text-center text-[11px] text-slate-500">
-          Not for navigation. Cross-check fuel, weather, and ATC with official
-          sources before flight.
-        </p>
-      </footer>
     </div>
   );
 }

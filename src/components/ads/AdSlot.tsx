@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect } from "react";
+import { useConsent } from "@/components/consent/ConsentProvider";
 import { cn } from "@/lib/utils";
 
 type AdPlacement =
@@ -37,16 +41,33 @@ const SLOT_ENV: Record<AdPlacement, string> = {
   "weather-widget": "NEXT_PUBLIC_ADSENSE_SLOT_WEATHER_WIDGET",
 };
 
+declare global {
+  interface Window {
+    adsbygoogle?: unknown[];
+  }
+}
+
 /**
- * AdSense-ready slot. Renders a placeholder until NEXT_PUBLIC_ADSENSE_CLIENT
- * and per-placement slot IDs are configured.
+ * Ad unit. The placeholder stays until a publisher id, a slot id, and
+ * consent (or a confirmed non-EU/UK region) are all present.
  */
 export function AdSlot({ placement, className }: AdSlotProps) {
   const meta = PLACEMENT_COPY[placement];
   const client = process.env.NEXT_PUBLIC_ADSENSE_CLIENT;
   const slotId = process.env[SLOT_ENV[placement]];
+  const { adsAllowed } = useConsent();
+  const live = Boolean(client && slotId && adsAllowed);
 
-  if (client && slotId) {
+  useEffect(() => {
+    if (!live) return;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch {
+      // AdSense rejects a second push on the same slot during fast refresh.
+    }
+  }, [live, placement, slotId]);
+
+  if (live) {
     return (
       <aside
         className={cn("w-full overflow-hidden", className)}

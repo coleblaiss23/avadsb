@@ -82,6 +82,7 @@ export async function GET(request: Request) {
   // Deduplicate while preserving order
   const uniquePaths = [...new Set(paths)];
 
+  try {
   for (const { host, label } of HOSTS) {
     for (const path of uniquePaths) {
       const result = await fetchPath(host, path);
@@ -106,13 +107,20 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json(
-    {
-      error: `No live aircraft found for “${q}”`,
+  return NextResponse.json({
+    error: `No live aircraft found for “${q}”`,
+    aircraft: [],
+    count: 0,
+    query: q,
+    source: "demo",
+  });
+  } catch (err) {
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : "Lookup failed",
       aircraft: [],
       count: 0,
       query: q,
-    },
-    { status: 404 }
-  );
+      source: "demo",
+    });
+  }
 }

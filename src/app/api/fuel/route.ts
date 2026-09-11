@@ -17,7 +17,7 @@ const FUEL_TYPES: FuelType[] = ["100LL", "Jet-A"];
  * GET /api/fuel?icao=KAPA&fuelType=100LL
  * GET /api/fuel?icaos=KAPA,KSDL,E37&fuelType=100LL
  *
- * Fallback: AirNav → crowdsource ≤72h → demo synthetic.
+ * AirNav → Supabase crowd reports ≤72h. No synthetic demo quotes.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -33,14 +33,21 @@ export async function GET(request: Request) {
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean)
       .slice(0, 200);
-    const prices = await resolveFuelPrices(codes, fuelType);
-    const payload = Object.fromEntries(
-      [...prices.entries()].map(([icao, price]) => [
-        icao,
-        { ...price, verification: verificationTag(price) },
-      ])
-    );
-    return NextResponse.json({ fuelType, prices: payload });
+    try {
+      const prices = await resolveFuelPrices(codes, fuelType);
+      const payload = Object.fromEntries(
+        [...prices.entries()].map(([icao, price]) => [
+          icao,
+          { ...price, verification: verificationTag(price) },
+        ])
+      );
+      return NextResponse.json({ fuelType, prices: payload });
+    } catch {
+      return NextResponse.json(
+        { error: "Fuel lookup unavailable", fuelType, prices: {} },
+        { status: 503 }
+      );
+    }
   }
 
   const icao = (searchParams.get("icao") || "").trim().toUpperCase();
@@ -51,20 +58,30 @@ export async function GET(request: Request) {
     );
   }
 
-  const airport = await resolveAirport(icao);
-  if (!airport) {
-    return NextResponse.json({ error: `Unknown airport ${icao}` }, { status: 404 });
-  }
+  try {
+    const airport = await resolveAirport(icao);
+    if (!airport) {
+      return NextResponse.json({ error: `Unknown airport ${icao}` }, { status: 404 });
+    }
 
-  const price = await resolveFuelPrice(airport.icao, fuelType);
-  return NextResponse.json({
-    airport: {
-      icao: airport.icao,
-      faa: airport.faa,
-      name: airport.name,
-    },
-    price: { ...price, verification: verificationTag(price) },
-  });
+    const price = await resolveFuelPrice(airport.icao, fuelType);
+    return NextResponse.json({
+      airport: {
+        icao: airport.icao,
+        faa: airport.faa,
+        name: airport.name,
+      },
+      price: price
+        ? { ...price, verification: verificationTag(price) }
+        : null,
+      unavailable: !price,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Fuel lookup unavailable", price: null, unavailable: true },
+      { status: 503 }
+    );
+  }
 }
 
 /**
@@ -105,7 +122,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const airport = await resolveAirport(b.airportIcao);
+  let airport;
+  try {
+    airport = await resolveAirport(b.airportIcao);
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Airport lookup failed" } satisfies PriceReportResponse,
+      { status: 503 }
+    );
+  }
   if (!airport) {
     return NextResponse.json(
       { success: false, message: "Unknown airport" } satisfies PriceReportResponse,
@@ -113,13 +138,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const saved = recordCrowdPrice({
-    airportIcao: airport.icao,
-    fboName: b.fboName?.trim() || "Crowdsourced",
-    fuelType: b.fuelType as FuelType,
-    pricePerGallon: Math.round(b.reportedPrice * 100) / 100,
-    isSelfServe: b.isSelfServe,
-  });
+  let saved;
+  try {
+    saved = await recordCrowdPrice({
+      airportIcao: airport.icao,
+      fboName: b.fboName?.trim() || "Crowdsourced",
+      fuelType: b.fuelType as FuelType,
+      pricePerGallon: Math.round(b.reportedPrice * 100) / 100,
+      isSelfServe: b.isSelfServe,
+      notes: b.notes,
+      reporterIp: ip,
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Could not record the report" } satisfies PriceReportResponse,
+      { status: 503 }
+    );
+  }
 
   return NextResponse.json(
     {

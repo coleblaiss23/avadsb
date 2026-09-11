@@ -13,7 +13,15 @@ export async function GET(_request: Request, ctx: Ctx) {
   if (icao.length < 3) {
     return NextResponse.json({ error: "Invalid ICAO" }, { status: 400 });
   }
-  const airport = await resolveAirport(icao);
+  let airport;
+  try {
+    airport = await resolveAirport(icao);
+  } catch {
+    return NextResponse.json(
+      { error: "Airport lookup unavailable", source: "demo" },
+      { status: 503 }
+    );
+  }
   if (!airport) {
     return NextResponse.json({ error: "Airport not found" }, { status: 404 });
   }

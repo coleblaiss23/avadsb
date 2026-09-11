@@ -13,8 +13,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ results: [] });
   }
 
-  const hits = await searchAirports(q, limit);
-  return NextResponse.json({
+  try {
+    const hits = await searchAirports(q, limit);
+    return NextResponse.json({
     results: hits.map((a) => ({
       icao: a.icao,
       faa: a.faa,
@@ -23,5 +24,8 @@ export async function GET(request: Request) {
       state: a.state,
       label: `${a.icao}${a.faa && a.faa !== a.icao ? ` / ${a.faa}` : ""} — ${a.name}, ${a.city} ${a.state}`.trim(),
     })),
-  });
+    });
+  } catch {
+    return NextResponse.json({ results: [], source: "demo" });
+  }
 }

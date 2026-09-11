@@ -7,12 +7,12 @@ import {
 
 export const runtime = "nodejs";
 
-const PRIMARY_HOST = "https://api.airplanes.live";
-/** Same ADSBExchange-v2 schema; used when airplanes.live requires registration. */
-const FALLBACK_HOST = "https://api.adsb.lol";
+const PRIMARY_HOST = "https://api.adsb.lol";
+/** ODbL-licensed, available for all uses with attribution. airplanes.live requires a commercial license for monetized sites — used here only as a fallback. */
+const FALLBACK_HOST = "https://api.airplanes.live";
 const MAX_RADIUS_NM = 250;
 const MIN_RADIUS_NM = 5;
-const POINT_CACHE_MS = 8_000;
+const POINT_CACHE_MS = 3_000;
 
 const pointCache = new Map<
   string,
@@ -122,13 +122,13 @@ export async function GET(request: Request) {
         source: hit.source,
         fetchedAt: new Date(hit.at).toISOString(),
       },
-      { headers: { "Cache-Control": "public, s-maxage=4, stale-while-revalidate=8" } }
+      { headers: { "Cache-Control": "public, s-maxage=2, stale-while-revalidate=4" } }
     );
   }
 
   try {
     let result = await fetchUpstream(PRIMARY_HOST, lat, lon, radius);
-    let source = "airplanes.live";
+    let source = "adsb.lol";
 
     if (!result.ok) {
       const fallback = await fetchUpstream(FALLBACK_HOST, lat, lon, radius);
@@ -143,14 +143,15 @@ export async function GET(request: Request) {
         );
       }
       result = fallback;
-      source = "adsb.lol";
+      source = "airplanes.live";
     }
 
     if (!result.ok) {
-      return NextResponse.json(
-        { error: "Live traffic unavailable", aircraft: [] },
-        { status: 502 }
-      );
+      return NextResponse.json({
+        error: "Live traffic unavailable",
+        aircraft: [],
+        source: "demo",
+      });
     }
 
     const aircraft = parseAirplanesLiveResponse(result.json);
@@ -167,17 +168,15 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=8, stale-while-revalidate=12",
+          "Cache-Control": "public, s-maxage=3, stale-while-revalidate=6",
         },
       }
     );
   } catch (err) {
-    return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : "Traffic fetch failed",
-        aircraft: [],
-      },
-      { status: 502 }
-    );
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : "Traffic fetch failed",
+      aircraft: [],
+      source: "demo",
+    });
   }
 }

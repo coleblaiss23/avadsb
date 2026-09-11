@@ -22,7 +22,7 @@ export function PlannerShell({ routeBanner }: { routeBanner?: string }) {
   }, [deckOpen]);
 
   return (
-    <div className="night-ui flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ink)] text-[var(--ink-text)]">
+    <div className="night-ui flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ink)] text-[var(--ink-text)]">
       <AppNav
         variant="radar"
         rightSlot={
@@ -79,12 +79,6 @@ export function PlannerShell({ routeBanner }: { routeBanner?: string }) {
         </section>
       </div>
 
-      <footer className="border-t border-[var(--ink-border)] bg-[var(--ink)] px-4 py-2">
-        <p className="mx-auto max-w-[1600px] text-center text-[11px] text-slate-500">
-          Verify fuel prices with the FBO before departure. Live ADS-B via
-          airplanes.live / adsb.lol.
-        </p>
-      </footer>
     </div>
   );
 }

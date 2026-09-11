@@ -19,7 +19,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "lat/lon out of range" }, { status: 400 });
   }
 
-  const hit = await findNearestAirport(lat, lon);
+  let hit;
+  try {
+    hit = await findNearestAirport(lat, lon);
+  } catch {
+    return NextResponse.json(
+      { error: "Airport lookup unavailable", source: "demo" },
+      { status: 503 }
+    );
+  }
   if (!hit) {
     return NextResponse.json({ error: "No nearby airport found" }, { status: 404 });
   }

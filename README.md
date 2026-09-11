@@ -104,6 +104,10 @@ Airport autocomplete: `GET /api/airports/search?q=SDL`
 ### 4. Environment variables
 
 Copy `.env.example` → `.env.local` and set Supabase + optional AirNav keys.
+Optional `FAA_NOTAM_CLIENT_ID` / `FAA_NOTAM_CLIENT_SECRET` (from notams@faa.gov)
+enable live NOTAMs. Without them, `/api/notams` returns demo data tagged
+`source: "demo"`. TFRs use the public FAA map feed and fall back to the same
+demo tag if that feed fails.
 
 ---
 
@@ -147,4 +151,11 @@ npm run lint     # ESLint
 
 ## License
 
-Private / demo — verify all fuel prices with the FBO before flight.
+Private / demo — verify all fuel prices with the FBO before flight. Verify all
+NOTAMs and TFRs against an official briefing (1800wxbrief, ForeFlight, or FAA
+channels) before flight. This app is a convenience layer, not a certified
+briefing source.
+
+Radar marker silhouettes use GPL-2.0-or-later shapes from tar1090 (same family
+as ADS-B Exchange). See [`NOTICE.md`](NOTICE.md) and
+[`third_party/tar1090-markers/`](third_party/tar1090-markers/).

@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Hobbs & Cost Splitter",
   description:
     "Split wet and dry flight costs — Hobbs time, fuel burn, rental rate, and engine reserve — across pilots and passengers.",
+  alternates: { canonical: "/hobbs" },
 };
 
 export default function HobbsPage() {

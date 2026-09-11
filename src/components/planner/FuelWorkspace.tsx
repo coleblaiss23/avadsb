@@ -21,7 +21,7 @@ export function FuelWorkspace({ routeBanner }: { routeBanner?: string }) {
   }, [setActivePanel]);
 
   return (
-    <div className="night-ui flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ink)] text-[var(--ink-text)]">
+    <div className="night-ui flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ink)] text-[var(--ink-text)]">
       <AppNav
         rightSlot={
           <p className="hidden text-xs text-slate-500 lg:block">
@@ -42,9 +42,15 @@ export function FuelWorkspace({ routeBanner }: { routeBanner?: string }) {
       <div className="mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 lg:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
         <aside className="flex max-h-[48vh] flex-col gap-4 overflow-y-auto border-b border-[var(--ink-border)] bg-[var(--ink)] p-4 lg:max-h-none lg:border-b-0 lg:border-r lg:border-[var(--ink-border)]">
           <div>
-            <h1 className="font-display text-2xl font-semibold text-slate-100">
-              Corridor Fuel Matrix
-            </h1>
+            {routeBanner ? (
+              <h2 className="font-display text-2xl font-semibold text-slate-100">
+                Corridor Fuel Matrix
+              </h2>
+            ) : (
+              <h1 className="font-display text-2xl font-semibold text-slate-100">
+                Corridor Fuel Matrix
+              </h1>
+            )}
             <p className="mt-1 text-sm text-slate-400">
               Find the cheapest 100LL or Jet-A along your route without leaving
               the corridor.
@@ -60,11 +66,6 @@ export function FuelWorkspace({ routeBanner }: { routeBanner?: string }) {
         </section>
       </div>
 
-      <footer className="border-t border-[var(--ink-border)] bg-[var(--ink)] px-4 py-2">
-        <p className="mx-auto max-w-[1600px] text-center text-[11px] text-slate-500">
-          Verify fuel prices with the FBO before departure.
-        </p>
-      </footer>
     </div>
   );
 }

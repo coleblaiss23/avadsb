@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import { CheckCircle2, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,20 +12,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  FAA_ACS_URL,
+  FAA_TESTING_MATRIX_URL,
+  QUIZ_CERTIFICATES,
   QUIZ_DISCLAIMER,
-  QUIZ_QUESTIONS,
-  QUIZ_SECTIONS,
+  bankForCertificate,
   questionsForSection,
+  type QuizCertificateId,
   type QuizQuestion,
-  type QuizSectionId,
-} from "@/data/ppl-quiz-bank";
+} from "@/data/quiz";
 import { cn } from "@/lib/utils";
 
-type SectionFilter = QuizSectionId | "all";
+type SectionFilter = string | "all";
 
 type FaaQuizProps = {
   variant?: "panel" | "page";
   className?: string;
+  /** Initial certificate track (default: private / PAR). */
+  initialCertificate?: QuizCertificateId;
 };
 
 function shuffle<T>(items: T[]): T[] {
@@ -37,18 +42,39 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 /**
- * Private Pilot knowledge practice — original bank by ACS-aligned sections.
+ * Multi-certificate FAA knowledge practice — original banks by ACS-aligned sections.
  */
-export function FaaQuiz({ variant = "page", className }: FaaQuizProps) {
+export function FaaQuiz({
+  variant = "page",
+  className,
+  initialCertificate = "private",
+}: FaaQuizProps) {
+  const [certificateId, setCertificateId] =
+    useState<QuizCertificateId>(initialCertificate);
+  const bank = bankForCertificate(certificateId);
+  const certificate = QUIZ_CERTIFICATES.find((c) => c.id === certificateId)!;
+
   const [section, setSection] = useState<SectionFilter>("all");
   const [deck, setDeck] = useState<QuizQuestion[]>(() =>
-    shuffle(QUIZ_QUESTIONS)
+    shuffle(bankForCertificate(initialCertificate).questions)
   );
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [answered, setAnswered] = useState(0);
   const [explainOpen, setExplainOpen] = useState(false);
+  const completedRef = useRef(false);
+
+  useEffect(() => {
+    if (deck.length === 0 || answered < deck.length || completedRef.current) return;
+    completedRef.current = true;
+    track(ANALYTICS_EVENTS.quizCompleted, {
+      certificate: certificateId,
+      section,
+      score: correctCount,
+      total: deck.length,
+    });
+  }, [answered, certificateId, correctCount, deck.length, section]);
 
   const q = deck[index] ?? deck[0];
   const locked = selected != null;
@@ -60,11 +86,11 @@ export function FaaQuiz({ variant = "page", className }: FaaQuizProps) {
     return `${correctCount} / ${answered} (${pct}%)`;
   }, [answered, correctCount]);
 
-  const sectionMeta = QUIZ_SECTIONS.find((s) => s.id === section);
+  const sectionMeta = bank.sections.find((s) => s.id === section);
 
-  function loadSection(next: SectionFilter) {
-    setSection(next);
-    setDeck(shuffle(questionsForSection(next)));
+  function resetProgress(nextDeck: QuizQuestion[]) {
+    completedRef.current = false;
+    setDeck(nextDeck);
     setIndex(0);
     setSelected(null);
     setCorrectCount(0);
@@ -72,8 +98,20 @@ export function FaaQuiz({ variant = "page", className }: FaaQuizProps) {
     setExplainOpen(false);
   }
 
+  function loadCertificate(next: QuizCertificateId) {
+    setCertificateId(next);
+    setSection("all");
+    resetProgress(shuffle(bankForCertificate(next).questions));
+  }
+
+  function loadSection(next: SectionFilter) {
+    setSection(next);
+    resetProgress(shuffle(questionsForSection(certificateId, next)));
+  }
+
   function reshuffle() {
-    setDeck(shuffle(questionsForSection(section)));
+    completedRef.current = false;
+    setDeck(shuffle(questionsForSection(certificateId, section)));
     setIndex(0);
     setSelected(null);
     setExplainOpen(false);
@@ -108,23 +146,86 @@ export function FaaQuiz({ variant = "page", className }: FaaQuizProps) {
         {QUIZ_DISCLAIMER}
       </p>
 
-      <div className="flex flex-wrap gap-1.5">
-        <SectionChip
-          active={section === "all"}
-          onClick={() => loadSection("all")}
-          label={`All (${QUIZ_QUESTIONS.length})`}
-        />
-        {QUIZ_SECTIONS.map((s) => {
-          const count = QUIZ_QUESTIONS.filter((x) => x.section === s.id).length;
-          return (
-            <SectionChip
-              key={s.id}
-              active={section === s.id}
-              onClick={() => loadSection(s.id)}
-              label={`${s.short} (${count})`}
-            />
-          );
-        })}
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          Certificate / rating
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {QUIZ_CERTIFICATES.map((c) => {
+            const count = bankForCertificate(c.id).questions.length;
+            return (
+              <SectionChip
+                key={c.id}
+                active={certificateId === c.id}
+                onClick={() => loadCertificate(c.id)}
+                label={`${c.short} (${count})`}
+              />
+            );
+          })}
+        </div>
+        <div className="rounded-lg border border-[var(--ink-border)] bg-[var(--ink)]/60 px-3 py-2.5 text-xs leading-relaxed text-slate-400">
+          <p className="font-medium text-slate-200">
+            {certificate.title}{" "}
+            <span className="font-mono text-[var(--scope-cyan)]">
+              ({certificate.testCode})
+            </span>
+          </p>
+          <p className="mt-1">{certificate.description}</p>
+          <p className="mt-1.5 font-mono text-[10px] text-slate-500">
+            Official FAA test: {certificate.officialQuestions} Q · age{" "}
+            {certificate.minAge}+ · {certificate.allottedHours} hr · pass{" "}
+            {certificate.passingScore}% · {certificate.acs}
+          </p>
+          {certificate.relatedTests ? (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {certificate.relatedTests}
+            </p>
+          ) : null}
+          <p className="mt-1.5 text-[10px] text-slate-600">
+            Source:{" "}
+            <a
+              href={FAA_TESTING_MATRIX_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 underline-offset-2 hover:text-slate-300 hover:underline"
+            >
+              FAA Knowledge Testing Matrix
+            </a>
+            {" · "}
+            <a
+              href={FAA_ACS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 underline-offset-2 hover:text-slate-300 hover:underline"
+            >
+              Airman Certification Standards
+            </a>
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          Knowledge section
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <SectionChip
+            active={section === "all"}
+            onClick={() => loadSection("all")}
+            label={`All (${bank.questions.length})`}
+          />
+          {bank.sections.map((s) => {
+            const count = bank.questions.filter((x) => x.section === s.id).length;
+            return (
+              <SectionChip
+                key={s.id}
+                active={section === s.id}
+                onClick={() => loadSection(s.id)}
+                label={`${s.short} (${count})`}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {section !== "all" && sectionMeta ? (
@@ -135,8 +236,8 @@ export function FaaQuiz({ variant = "page", className }: FaaQuizProps) {
         </p>
       ) : (
         <p className="text-xs text-slate-500">
-          Mixed deck across all nine ACS-aligned knowledge sections. Shuffle
-          anytime.
+          Mixed deck across all {bank.sections.length} knowledge sections for{" "}
+          {certificate.short}. Shuffle anytime.
         </p>
       )}
 

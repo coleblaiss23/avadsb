@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Squawk Code Decoder",
   description:
     "Decode Mode-A squawk codes including VFR 1200 and emergency discretes 7500, 7600, and 7700.",
+  alternates: { canonical: "/squawk" },
 };
 
 export default function SquawkPage() {

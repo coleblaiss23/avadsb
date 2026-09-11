@@ -6,7 +6,8 @@ import { CrosswindPageClient } from "@/components/weather/CrosswindPageClient";
 export const metadata: Metadata = {
   title: "Crosswind & Runway",
   description:
-    "Compute headwind and crosswind components from live METAR against catalog runway headings.",
+    "Recommended into-the-wind runways from live METAR, plus headwind and crosswind components for each end.",
+  alternates: { canonical: "/crosswind" },
 };
 
 export default function CrosswindPage() {
@@ -14,7 +15,7 @@ export default function CrosswindPage() {
     <ToolPageShell
       eyebrow="Runway analysis"
       title="Crosswind & Runway"
-      description="Load an airport, pick a runway end, and see crosswind / headwind against the current METAR wind."
+      description="Load an airport and get recommended runways for landing into the wind, with headwind / crosswind against the current METAR."
       width="narrow"
     >
       <Suspense

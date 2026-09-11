@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Navigation2, Plane } from "lucide-react";
+import { AlertTriangle, Navigation2, Wind } from "lucide-react";
 import { MetarBadge } from "@/components/weather/MetarBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +18,12 @@ import { Label } from "@/components/ui/label";
 import {
   computeWindComponents,
   crosswindWarning,
+  rankRunwaysForWind,
   runwayEndsForAirport,
+  type WindComponents,
 } from "@/lib/crosswind";
 import { cn, normalizeIcao } from "@/lib/utils";
-import type { Airport, ParsedMetar } from "@/types";
+import type { Airport, AirportRunwayEnd, ParsedMetar } from "@/types";
 
 type CrosswindAnalyzerProps = {
   defaultIcao?: string;
@@ -43,72 +45,6 @@ async function loadMetar(icao: string): Promise<ParsedMetar | null> {
   if (!res.ok) return null;
   const data = await res.json();
   return data.metar ?? null;
-}
-
-function RunwayGraphic({
-  runwayHeading,
-  windDir,
-  crosswindKt,
-  headwindKt,
-}: {
-  runwayHeading: number;
-  windDir: number | null;
-  crosswindKt: number;
-  headwindKt: number;
-}) {
-  const warn = crosswindWarning(crosswindKt);
-  return (
-    <div className="relative mx-auto aspect-square w-full max-w-[240px]">
-      <div className="absolute inset-0 rounded-full border border-[var(--ink-border)] bg-[#0a0d13]" />
-      {["N", "E", "S", "W"].map((label, i) => (
-        <span
-          key={label}
-          className="absolute left-1/2 top-1/2 font-avionics text-[10px] font-semibold text-slate-500"
-          style={{
-            transform: `rotate(${i * 90}deg) translateY(-96px) rotate(${-i * 90}deg) translateX(-50%)`,
-          }}
-        >
-          {label}
-        </span>
-      ))}
-      <div
-        className="absolute left-1/2 top-1/2 h-[70%] w-8 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-slate-600 shadow-sm"
-        style={{ transform: `translate(-50%, -50%) rotate(${runwayHeading}deg)` }}
-      >
-        <div className="absolute inset-x-1 top-2 bottom-2 border-x border-dashed border-[#c4a46a]/45" />
-        <Plane
-          className="absolute left-1/2 top-3 h-4 w-4 -translate-x-1/2 text-[var(--ink-text)]"
-          style={{ transform: "translateX(-50%)" }}
-        />
-      </div>
-      {windDir != null && (
-        <div
-          className="absolute left-1/2 top-1/2"
-          style={{
-            transform: `rotate(${windDir}deg) translateY(-78px)`,
-          }}
-        >
-          <Navigation2
-            className={cn(
-              "h-5 w-5 -rotate-45",
-              warn.level === "warning"
-                ? "text-[var(--signal-red)]"
-                : warn.level === "caution"
-                  ? "text-[var(--signal-amber)]"
-                  : "text-[var(--signal-green)]"
-            )}
-            fill="currentColor"
-          />
-        </div>
-      )}
-      <div className="absolute inset-x-0 bottom-2 text-center">
-        <p className="font-avionics text-xs font-semibold text-slate-200">
-          XW {crosswindKt.toFixed(1)} kt ·{" "}
-          {headwindKt >= 0 ? "HW" : "TW"} {Math.abs(headwindKt).toFixed(1)} kt
-        </p>
-      </div>
-    </div>
-  );
 }
 
 function CrosswindBody({
@@ -143,22 +79,51 @@ function CrosswindBody({
     return runwayEndsForAirport(airportQuery.data);
   }, [airportQuery.data]);
 
-  const selected = useMemo(() => {
-    if (!ends.length) return null;
-    return ends.find((e) => e.ident === selectedEnd) ?? ends[0];
-  }, [ends, selectedEnd]);
-
-  const components = useMemo(() => {
+  const ranked = useMemo(() => {
     const metar = metarQuery.data;
-    if (!selected || !metar || metar.windDirDeg == null) return null;
+    if (!ends.length || !metar || metar.windDirDeg == null) return [];
+    return rankRunwaysForWind(ends, metar.windDirDeg, metar.windSpeedKt);
+  }, [ends, metarQuery.data]);
+
+  // Prefer the best into-wind runway when wind/airport data arrives.
+  useEffect(() => {
+    if (selectedEnd) return;
+    const best = ranked.find((r) => r.recommended) ?? ranked[0];
+    if (best) setSelectedEnd(best.ident);
+  }, [ranked, selectedEnd]);
+
+  const selectedRanked = useMemo(() => {
+    if (!ranked.length) return null;
+    return ranked.find((e) => e.ident === selectedEnd) ?? ranked[0] ?? null;
+  }, [ranked, selectedEnd]);
+
+  const selectedBasic: AirportRunwayEnd | null = useMemo(() => {
+    if (selectedRanked) return selectedRanked;
+    if (!ends.length) return null;
+    return ends.find((e) => e.ident === selectedEnd) ?? ends[0] ?? null;
+  }, [selectedRanked, ends, selectedEnd]);
+
+  const components: WindComponents | null = useMemo(() => {
+    if (selectedRanked) {
+      return {
+        headwindKt: selectedRanked.headwindKt,
+        crosswindKt: selectedRanked.crosswindKt,
+        crosswindSignedKt: selectedRanked.crosswindSignedKt,
+        angleDeg: selectedRanked.angleDeg,
+      };
+    }
+    const metar = metarQuery.data;
+    if (!selectedBasic || !metar || metar.windDirDeg == null) return null;
     return computeWindComponents(
       metar.windDirDeg,
       metar.windSpeedKt,
-      selected.headingDegT
+      selectedBasic.headingDegT
     );
-  }, [selected, metarQuery.data]);
+  }, [selectedRanked, selectedBasic, metarQuery.data]);
 
   const warn = components ? crosswindWarning(components.crosswindKt) : null;
+  const recommended = ranked.filter((r) => r.recommended);
+  const selected = selectedBasic;
 
   function applyIcao() {
     const next = normalizeIcao(icaoInput);
@@ -209,13 +174,113 @@ function CrosswindBody({
         <p className="text-sm text-slate-500">No runway data for this field.</p>
       )}
 
-      {ends.length > 0 && (
+      {metarQuery.data?.windDirDeg == null && ends.length > 0 && (
+        <p className="text-sm text-slate-500">
+          Waiting on wind direction to recommend a runway (calm / VRB METAR).
+        </p>
+      )}
+
+      {recommended.length > 0 && (
+        <div
+          className={cn(
+            "space-y-3 rounded-xl border p-4",
+            dark
+              ? "instrument-inset border-[var(--ink-border)]"
+              : "border-panel-border bg-slate-50"
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <Wind
+              className={cn(
+                "mt-0.5 h-4 w-4 shrink-0",
+                dark ? "text-[var(--signal-green)]" : "text-accent"
+              )}
+            />
+            <div>
+              <p
+                className={cn(
+                  "font-avionics text-sm font-semibold",
+                  dark ? "text-slate-100" : "text-slate-900"
+                )}
+              >
+                Recommended runway
+                {recommended.length > 1 ? "s" : ""} — land into the wind
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Wind from {metarQuery.data?.windDirDeg}° at{" "}
+                {metarQuery.data?.windSpeedKt ?? "—"} kt. Prefer the end with the
+                most headwind.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {recommended.map((rwy, i) => (
+              <button
+                key={`rec-${rwy.ident}`}
+                type="button"
+                onClick={() => setSelectedEnd(rwy.ident)}
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition",
+                  selected?.ident === rwy.ident
+                    ? dark
+                      ? "border-[var(--signal-green)]/55 bg-emerald-950/45"
+                      : "border-accent bg-emerald-50"
+                    : dark
+                      ? "border-[var(--ink-border)] bg-[var(--ink-elevated)] hover:border-slate-600"
+                      : "border-[var(--ink-border)] bg-white hover:border-[var(--bezel)]"
+                )}
+              >
+                <div>
+                  <p
+                    className={cn(
+                      "font-avionics text-base font-semibold",
+                      dark ? "text-slate-100" : "text-slate-900"
+                    )}
+                  >
+                    RWY {rwy.ident}
+                    {i === 0 && (
+                      <span
+                        className={cn(
+                          "ml-2 text-[10px] font-bold uppercase tracking-wide",
+                          dark ? "text-[var(--signal-green)]" : "text-accent"
+                        )}
+                      >
+                        Best
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Hdg {Math.round(rwy.headingDegT)}°T ·{" "}
+                    {rwy.lengthFt.toLocaleString()} × {rwy.widthFt} ft
+                  </p>
+                </div>
+                <div className="text-right font-avionics text-xs">
+                  <p
+                    className={cn(
+                      "font-semibold",
+                      dark ? "text-slate-100" : "text-slate-900"
+                    )}
+                  >
+                    HW {rwy.headwindKt.toFixed(1)} kt
+                  </p>
+                  <p className="text-slate-500">
+                    XW {rwy.crosswindKt.toFixed(1)} kt
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ranked.length > 0 && (
         <div className="space-y-2">
           <Label className={dark ? "text-slate-400" : undefined}>
-            Runway end
+            All runway ends
           </Label>
           <div className="flex flex-wrap gap-1.5">
-            {ends.map((end) => (
+            {ranked.map((end) => (
               <button
                 key={`${end.ident}-${end.headingDegT}`}
                 type="button"
@@ -235,10 +300,17 @@ function CrosswindBody({
                 <span
                   className={cn(
                     "ml-1 font-normal",
-                    dark ? "text-slate-500" : "text-slate-400"
+                    end.headwindKt >= 0
+                      ? dark
+                        ? "text-[var(--signal-green)]/80"
+                        : "text-accent"
+                      : dark
+                        ? "text-slate-500"
+                        : "text-slate-400"
                   )}
                 >
-                  {Math.round(end.headingDegT)}°
+                  {end.headwindKt >= 0 ? "HW" : "TW"}{" "}
+                  {Math.abs(end.headwindKt).toFixed(0)}
                 </span>
               </button>
             ))}
@@ -255,12 +327,14 @@ function CrosswindBody({
               : "border-panel-border bg-slate-50"
           )}
         >
-          <RunwayGraphic
-            runwayHeading={selected.headingDegT}
-            windDir={metarQuery.data.windDirDeg}
-            crosswindKt={components.crosswindKt}
-            headwindKt={components.headwindKt}
-          />
+          <p
+            className={cn(
+              "font-avionics text-sm font-semibold",
+              dark ? "text-slate-100" : "text-slate-900"
+            )}
+          >
+            RWY {selected.ident} components
+          </p>
           {warn && warn.level !== "ok" && (
             <p
               className={cn(
@@ -368,8 +442,8 @@ export function CrosswindAnalyzer({
         <DialogHeader>
           <DialogTitle>Runway & Crosswind Analyzer</DialogTitle>
           <DialogDescription>
-            Wind components from live METAR against catalog runway headings
-            (true).
+            Recommended into-the-wind runways from live METAR and catalog
+            headings (true).
           </DialogDescription>
         </DialogHeader>
         <CrosswindBody defaultIcao={defaultIcao} active={open} tone="dark" />

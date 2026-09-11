@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import {
   MapContainer,
   TileLayer,
@@ -15,17 +16,27 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Crosshair, Eraser, Radio, Search } from "lucide-react";
+import { Crosshair, Eraser, Layers, Radio, Search, ShieldAlert } from "lucide-react";
 import { PriceUpdateModal } from "@/components/fuel/PriceUpdateModal";
+import {
+  AircraftFloatingCard,
+  MapAircraftProjector,
+  type AircraftScreenPos,
+} from "@/components/map/AircraftCardDock";
 import { AircraftInfoCard } from "@/components/map/AircraftInfoCard";
 import { AirfieldDiagramLayer } from "@/components/map/AirfieldDiagramLayer";
+import { AirportLabelsLayer } from "@/components/map/AirportLabelsLayer";
+import { AirspaceLayer } from "@/components/map/AirspaceLayer";
+import { TFRLayer, tfrStatusLine, useTfrOverlay } from "@/components/map/TFRLayer";
 import { TrafficRadarLayer } from "@/components/map/TrafficRadarLayer";
+import { AirportNotamFlag } from "@/components/notams/AirportNotamFlag";
 import {
   TrafficMapSync,
   useLiveTraffic,
   type QueryPoint,
 } from "@/components/map/use-live-traffic";
-import { ADSB_ALT_LEGEND } from "@/lib/adsb-colors";
+import { useExtrapolatedAircraft } from "@/hooks/use-extrapolated-aircraft";
+import { ADSB_ALT_LEGEND, altitudeRainbowColor } from "@/lib/adsb-colors";
 import { greatCirclePath, labelCollisionOffsets } from "@/lib/geo";
 import { loadMapSession, PHOENIX_MSA } from "@/lib/map-session";
 import { isAircraftOnGround } from "@/lib/aircraft-silhouettes";
@@ -136,6 +147,98 @@ function RememberMapView() {
   return null;
 }
 
+type MapAirportHit = {
+  icao: string;
+  latitude: number;
+  longitude: number;
+  type: string;
+};
+
+function sizeRank(type: string): number {
+  if (type === "large") return 3;
+  if (type === "medium") return 2;
+  if (type === "small") return 1;
+  return 0;
+}
+
+/** Keep origin / NOTAM flag aligned with the largest airport near map center. */
+function SyncMapOrigin() {
+  const map = useMap();
+  const setOrigin = usePlannerStore((s) => s.setOrigin);
+
+  useEffect(() => {
+    let timer = 0;
+    let abort: AbortController | null = null;
+
+    const sync = () => {
+      const { destinationIcao, result } = usePlannerStore.getState();
+      // Don't clobber an active fuel-plan origin while a destination/result is set.
+      if (result || destinationIcao.trim().length >= 3) return;
+
+      const zoom = map.getZoom();
+      if (zoom < 7) return;
+
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const bounds = map.getBounds();
+        const center = map.getCenter();
+        const minRunway = zoom >= 11 ? 2500 : zoom >= 9 ? 4000 : 5500;
+        abort?.abort();
+        abort = new AbortController();
+        const params = new URLSearchParams({
+          south: bounds.getSouth().toFixed(5),
+          west: bounds.getWest().toFixed(5),
+          north: bounds.getNorth().toFixed(5),
+          east: bounds.getEast().toFixed(5),
+          minRunway: String(minRunway),
+          limit: "40",
+        });
+        fetch(`/api/airports/bbox?${params}`, { signal: abort.signal })
+          .then((res) =>
+            res.ok ? res.json() : Promise.reject(new Error("bbox"))
+          )
+          .then((json: { airports?: MapAirportHit[] }) => {
+            const airports = Array.isArray(json.airports) ? json.airports : [];
+            if (!airports.length) return;
+
+            // BBox API returns largest-first; among the top size tier, pick nearest center.
+            const top = airports.slice(0, 8);
+            const maxSize = Math.max(...top.map((a) => sizeRank(a.type)));
+            const tier = top.filter((a) => sizeRank(a.type) === maxSize);
+            let pick = tier[0]!;
+            let bestD = Number.POSITIVE_INFINITY;
+            for (const a of tier) {
+              const d =
+                (a.latitude - center.lat) ** 2 +
+                (a.longitude - center.lng) ** 2;
+              if (d < bestD) {
+                bestD = d;
+                pick = a;
+              }
+            }
+
+            if (pick.icao !== usePlannerStore.getState().originIcao) {
+              setOrigin(pick.icao);
+            }
+          })
+          .catch((err: unknown) => {
+            if (err instanceof DOMException && err.name === "AbortError") return;
+          });
+      }, 350);
+    };
+
+    sync();
+    map.on("moveend", sync);
+    return () => {
+      window.clearTimeout(timer);
+      abort?.abort();
+      map.off("moveend", sync);
+    };
+  }, [map, setOrigin]);
+
+  return null;
+}
+
 function InvalidateMapSize() {
   const map = useMap();
   useEffect(() => {
@@ -168,7 +271,7 @@ function FlyToAircraft({
   return null;
 }
 
-/** Keep the map centered on the selected aircraft (ADSBX follow). */
+/** Keep the map centered on the selected aircraft while following. */
 function FollowAircraft({
   aircraft,
   enabled,
@@ -177,11 +280,16 @@ function FollowAircraft({
   enabled: boolean;
 }) {
   const map = useMap();
+  const lastPanAt = useRef(0);
   useEffect(() => {
     if (!enabled || !aircraft) return;
+    const now = Date.now();
+    // Extrapolated positions update ~10Hz — throttle pans so the map stays usable.
+    if (now - lastPanAt.current < 400) return;
+    lastPanAt.current = now;
     map.panTo([aircraft.lat, aircraft.lon], {
       animate: true,
-      duration: 0.45,
+      duration: 0.35,
     });
   }, [map, enabled, aircraft?.hex, aircraft?.lat, aircraft?.lon]);
   return null;
@@ -251,6 +359,11 @@ export function RouteMap() {
     name: string;
   } | null>(null);
   const [radarOn, setRadarOn] = useState(true);
+  useEffect(() => {
+    if (radarOn) track(ANALYTICS_EVENTS.radarOpened);
+  }, [radarOn]);
+  const [tfrOn, setTfrOn] = useState(true);
+  const [airspaceOn, setAirspaceOn] = useState(false);
   const [trafficPoint, setTrafficPoint] = useState<QueryPoint | null>(() => {
     const view = loadMapSession() ?? PHOENIX_MSA;
     return {
@@ -266,12 +379,16 @@ export function RouteMap() {
   const [trackedSnapshot, setTrackedSnapshot] = useState<LiveAircraft | null>(
     null
   );
+  const [hovered, setHovered] = useState<LiveAircraft | null>(null);
+  const [cardScreenPos, setCardScreenPos] = useState<AircraftScreenPos | null>(
+    null
+  );
   const [flyNonce, setFlyNonce] = useState(0);
   const [follow, setFollow] = useState(false);
-  const [showTrails, setShowTrails] = useState(true);
   const [altFilter, setAltFilter] = useState<AltFilter>("all");
   const [resyncNonce, setResyncNonce] = useState(0);
   const [flightRoute, setFlightRoute] = useState<FlightRoute | null>(null);
+  const [selectedPath, setSelectedPath] = useState<[number, number][]>([]);
   const setEmergencyTrafficOnly = usePlannerStore(
     (s) => s.setEmergencyTrafficOnly
   );
@@ -291,6 +408,9 @@ export function RouteMap() {
   }, [homeAirport.icao, homeAirport.latitude, homeAirport.longitude, homeAirport.source]);
 
   const traffic = useLiveTraffic(radarOn, trafficPoint);
+  const tfrs = useTfrOverlay(tfrOn);
+  const originIcao = usePlannerStore((s) => s.originIcao);
+  const destinationIcao = usePlannerStore((s) => s.destinationIcao);
 
   const displayAircraft = useMemo(() => {
     let list = [...traffic.aircraft];
@@ -314,12 +434,54 @@ export function RouteMap() {
     altFilter,
   ]);
 
+  // Only coast the focused plane(s) here — full fleet moves inside TrafficRadarLayer.
+  const focusSource = useMemo(() => {
+    const out: LiveAircraft[] = [];
+    if (trackedHex) {
+      const tracked =
+        displayAircraft.find((a) => a.hex === trackedHex) ?? trackedSnapshot;
+      if (tracked) out.push(tracked);
+    }
+    if (hovered && hovered.hex !== trackedHex) {
+      out.push(
+        displayAircraft.find((a) => a.hex === hovered.hex) ?? hovered
+      );
+    }
+    return out;
+  }, [displayAircraft, trackedHex, trackedSnapshot, hovered]);
+
+  const focusMoving = useExtrapolatedAircraft(focusSource, radarOn);
+
   const trackedLive = useMemo(() => {
     if (!trackedHex) return null;
     return (
-      displayAircraft.find((a) => a.hex === trackedHex) ?? trackedSnapshot
+      focusMoving.find((a) => a.hex === trackedHex) ?? trackedSnapshot
     );
-  }, [displayAircraft, trackedHex, trackedSnapshot]);
+  }, [focusMoving, trackedHex, trackedSnapshot]);
+
+  const hoveredLive = useMemo(() => {
+    if (!hovered) return null;
+    return focusMoving.find((a) => a.hex === hovered.hex) ?? hovered;
+  }, [focusMoving, hovered]);
+
+  const cardAircraft = hoveredLive ?? trackedLive;
+  const cardPinned = !!cardAircraft && cardAircraft.hex === trackedHex;
+
+  const onCardScreenPos = useCallback((pos: AircraftScreenPos | null) => {
+    setCardScreenPos(pos);
+  }, []);
+
+  useEffect(() => {
+    if (!cardAircraft) setCardScreenPos(null);
+  }, [cardAircraft]);
+
+  const showHover = useCallback((ac: LiveAircraft) => {
+    setHovered((prev) => (prev?.hex === ac.hex ? prev : ac));
+  }, []);
+
+  const clearHover = useCallback(() => {
+    setHovered((prev) => (prev ? null : prev));
+  }, []);
 
   useEffect(() => {
     const callsign = trackedLive?.flight?.trim().toUpperCase() ?? "";
@@ -347,6 +509,41 @@ export function RouteMap() {
       cancelled = true;
     };
   }, [trackedHex, trackedLive?.flight]);
+
+  // Full current-flight track for the pinned aircraft (not shown for all traffic).
+  useEffect(() => {
+    if (!trackedHex) {
+      setSelectedPath([]);
+      return;
+    }
+    let cancelled = false;
+    void fetch(
+      `/api/traffic/trace?hex=${encodeURIComponent(trackedHex)}`
+    )
+      .then((res) => res.json())
+      .then((data: { path?: [number, number][] }) => {
+        if (cancelled) return;
+        setSelectedPath(Array.isArray(data.path) ? data.path : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedPath([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackedHex]);
+
+  const trackedFlightPath = useMemo(() => {
+    if (selectedPath.length < 2 || !trackedLive) return selectedPath;
+    const last = selectedPath[selectedPath.length - 1]!;
+    if (
+      Math.abs(last[0] - trackedLive.lat) < 1e-5 &&
+      Math.abs(last[1] - trackedLive.lon) < 1e-5
+    ) {
+      return selectedPath;
+    }
+    return [...selectedPath, [trackedLive.lat, trackedLive.lon] as [number, number]];
+  }, [selectedPath, trackedLive]);
 
   // Refresh tracked snapshot from live feed when available
   useEffect(() => {
@@ -413,6 +610,7 @@ export function RouteMap() {
   function releaseTrack() {
     setTrackedHex(null);
     setTrackedSnapshot(null);
+    setHovered(null);
     setFollow(false);
     setFlightRoute(null);
     setResyncNonce((n) => n + 1);
@@ -528,6 +726,12 @@ export function RouteMap() {
     [markersToShow]
   );
 
+  const labeledIcaos = useMemo(() => {
+    const codes = markersToShow.map((a) => a.icao);
+    if (!result && airportPinned) codes.push(homeAirport.icao);
+    return codes;
+  }, [airportPinned, homeAirport.icao, markersToShow, result]);
+
   return (
     <div className="relative z-0 h-full min-h-[420px] w-full isolate overflow-hidden">
       <MapContainer
@@ -564,8 +768,12 @@ export function RouteMap() {
         )}
         <ZoomControl position="bottomright" />
         <AirfieldDiagramLayer />
+        <AirportLabelsLayer excludeIcaos={labeledIcaos} />
+        {tfrOn && <TFRLayer features={tfrs.features} source={tfrs.source} />}
+        <AirspaceLayer enabled={airspaceOn} />
         <InvalidateMapSize />
         <RememberMapView />
+        <SyncMapOrigin />
         {!result && mapFocusNonce > 0 && (
           <CenterOnHome
             center={[homeAirport.latitude, homeAirport.longitude]}
@@ -582,6 +790,13 @@ export function RouteMap() {
         />
         <FlyToAircraft aircraft={trackedLive} nonce={flyNonce} />
         <FollowAircraft aircraft={trackedLive} enabled={follow && !!trackedLive} />
+        {cardAircraft && (
+          <MapAircraftProjector
+            lat={cardAircraft.lat}
+            lon={cardAircraft.lon}
+            onProject={onCardScreenPos}
+          />
+        )}
 
         {flightRoute && (
           <>
@@ -658,19 +873,37 @@ export function RouteMap() {
           <TrafficRadarLayer
             aircraft={displayAircraft}
             selectedHex={trackedHex}
-            showTrails={showTrails}
             labelMinZoom={9}
+            onHover={(ac) => {
+              if (ac) showHover(ac);
+              else clearHover();
+            }}
             onSelect={(ac) => {
               if (!ac) {
                 releaseTrack();
                 return;
               }
+              setHovered(null);
               setTrackedHex(ac.hex);
               setTrackedSnapshot(ac);
               setFollow(false);
             }}
           />
         )}
+
+        {trackedFlightPath.length >= 2 && trackedLive && (
+          <Polyline
+            positions={trackedFlightPath}
+            pathOptions={{
+              color: altitudeRainbowColor(trackedLive.alt_baro),
+              weight: 3,
+              opacity: 1,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        )}
+
 
         {!result && airportPinned && (
           <Marker
@@ -822,20 +1055,46 @@ export function RouteMap() {
             {lookupError}
           </p>
         )}
-        {trackedLive && (
-          <div className="pointer-events-auto scope-bezel p-3">
-            <AircraftInfoCard
-              ac={trackedLive}
-              following={follow}
-              route={flightRoute}
-              onToggleFollow={() => setFollow((v) => !v)}
-              onClose={releaseTrack}
-            />
+        {!result && !trackedHex && (
+          <p className="scope-bezel px-3 py-2 text-xs text-slate-400">
+            Live ADS-B — pan the map or find a flight. Zoom in on a field for
+            runway numbers and taxiway letters.
+          </p>
+        )}
+        {(originIcao.length >= 3 || destinationIcao.length >= 3) && (
+          <div className="flex flex-col items-start gap-1">
+            {originIcao.length >= 3 && (
+              <AirportNotamFlag icao={originIcao} role="Origin" />
+            )}
+            {destinationIcao.length >= 3 &&
+              destinationIcao.toUpperCase() !== originIcao.toUpperCase() && (
+                <AirportNotamFlag icao={destinationIcao} role="Dest" />
+              )}
           </div>
         )}
       </div>
 
-      <div className="pointer-events-none absolute right-3 top-3 z-[1100] flex flex-col items-end gap-2">
+      {cardAircraft && (
+        <AircraftFloatingCard
+          hex={cardAircraft.hex}
+          screenPos={cardScreenPos}
+          clearLegend={radarOn}
+          interactive={cardPinned}
+        >
+          <AircraftInfoCard
+            ac={cardAircraft}
+            following={cardPinned ? follow : undefined}
+            route={cardPinned ? flightRoute : null}
+            allowTrackShare={cardPinned}
+            onToggleFollow={
+              cardPinned ? () => setFollow((v) => !v) : undefined
+            }
+            onClose={cardPinned ? releaseTrack : () => setHovered(null)}
+          />
+        </AircraftFloatingCard>
+      )}
+
+      <div className="pointer-events-none absolute right-3 top-3 z-[1050] flex flex-col items-end gap-2">
         {(result || trackedHex) && (
           <button
             type="button"
@@ -877,6 +1136,47 @@ export function RouteMap() {
           <Radio className="h-3.5 w-3.5" aria-hidden />
           Radar {radarOn ? "ON" : "OFF"}
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTfrOn((v) => !v);
+            tfrs.bumpActivity();
+          }}
+          className={
+            tfrOn
+              ? "pointer-events-auto inline-flex items-center gap-1.5 border border-[var(--signal-amber)]/50 bg-[var(--ink)] px-3 py-1.5 text-xs font-semibold text-[var(--signal-amber)]"
+              : "pointer-events-auto inline-flex items-center gap-1.5 scope-bezel px-3 py-1.5 text-xs font-semibold text-slate-400 hover:border-[var(--bezel)]"
+          }
+          aria-pressed={tfrOn}
+        >
+          <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
+          TFRs {tfrOn ? "ON" : "OFF"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAirspaceOn((v) => !v)}
+          className={
+            airspaceOn
+              ? "pointer-events-auto inline-flex items-center gap-1.5 border border-[var(--bezel)]/70 bg-[var(--ink)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-muted)]"
+              : "pointer-events-auto inline-flex items-center gap-1.5 scope-bezel px-3 py-1.5 text-xs font-semibold text-slate-400 hover:border-[var(--bezel)]"
+          }
+          aria-pressed={airspaceOn}
+        >
+          <Layers className="h-3.5 w-3.5" aria-hidden />
+          Airspace
+        </button>
+        {tfrOn && (
+          <p className="pointer-events-none scope-bezel px-2.5 py-1 text-[10px] text-slate-400">
+            {tfrStatusLine({
+              count: tfrs.features.length,
+              source: tfrs.source,
+              fetchedAt: tfrs.fetchedAt,
+              isFetching: tfrs.isFetching,
+              isError: tfrs.isError,
+            })}
+            {tfrs.source === "demo" ? " · demo" : ""}
+          </p>
+        )}
         {radarOn && (
           <div className="pointer-events-auto flex flex-col items-end gap-1.5">
             <div className="flex flex-wrap justify-end gap-1">
@@ -906,17 +1206,6 @@ export function RouteMap() {
             <div className="flex gap-1">
               <button
                 type="button"
-                onClick={() => setShowTrails((v) => !v)}
-                className={
-                  showTrails
-                    ? "border border-[var(--bezel)] bg-[var(--ink-elevated)] px-2 py-0.5 font-mono text-[10px] text-slate-200"
-                    : "scope-bezel px-2 py-0.5 font-mono text-[10px] text-slate-500"
-                }
-              >
-                Trails {showTrails ? "ON" : "OFF"}
-              </button>
-              <button
-                type="button"
                 onClick={() => setEmergencyTrafficOnly(!emergencyTrafficOnly)}
                 className={
                   emergencyTrafficOnly
@@ -940,14 +1229,6 @@ export function RouteMap() {
           </div>
         )}
       </div>
-
-      {!result && !trackedHex && (
-        <div className="pointer-events-none absolute inset-x-0 top-16 z-[900] flex justify-center px-16">
-          <div className="scope-bezel px-4 py-2 text-xs text-slate-400">
-            Live ADS-B — pan the map or find a flight. Zoom in on a field for runway numbers and taxiway letters.
-          </div>
-        </div>
-      )}
 
       {radarOn && (
         <div className="pointer-events-none absolute bottom-3 left-3 z-[900] scope-bezel px-3 py-2">

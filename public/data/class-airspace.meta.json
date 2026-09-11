@@ -1,0 +1,16 @@
+{
+  "source": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/ArcGIS/rest/services/Class_Airspace/FeatureServer/0",
+  "openData": "https://adds-faa.opendata.arcgis.com/datasets/class-airspace",
+  "where": "(CLASS IN ('B','C','D')) OR (CLASS = 'E' AND LOWER_VAL = 0)",
+  "maxAllowableOffset": 0.006,
+  "coordDecimals": 5,
+  "featureCount": 2279,
+  "byClass": {
+    "B": 424,
+    "C": 379,
+    "D": 603,
+    "E": 873
+  },
+  "bytes": 1181232,
+  "builtAt": "2026-09-11T15:10:31.580Z"
+}

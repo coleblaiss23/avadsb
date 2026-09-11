@@ -10,6 +10,7 @@ import {
   Timer,
   Wind,
 } from "lucide-react";
+import { AirportNotamFlag } from "@/components/notams/AirportNotamFlag";
 import { AirportAutocomplete } from "@/components/planner/AirportAutocomplete";
 import { TOOL_NAV } from "@/lib/tools-nav";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,18 @@ export function DashboardSidebar() {
           placeholder="Search ICAO / FAA"
         />
       </div>
+
+      {(originIcao.length >= 3 || destinationIcao.length >= 3) && (
+        <div className="flex flex-col items-start gap-1.5">
+          {originIcao.length >= 3 && (
+            <AirportNotamFlag icao={originIcao} role="Origin" />
+          )}
+          {destinationIcao.length >= 3 &&
+            destinationIcao.toUpperCase() !== originIcao.toUpperCase() && (
+              <AirportNotamFlag icao={destinationIcao} role="Dest" />
+            )}
+        </div>
+      )}
 
       <div>
         <p className="mb-2 text-sm font-medium text-slate-400">Tools</p>

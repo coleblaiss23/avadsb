@@ -166,8 +166,24 @@ body {
   color: #f97316;
 }
 
+.afm-ac--balloon {
+  color: #f472b6;
+}
+
+.afm-ac--blimp {
+  color: #a78bfa;
+}
+
 .afm-ac--ground {
   opacity: 1;
+}
+
+.afm-ac-marker {
+  cursor: pointer;
+}
+
+.leaflet-marker-icon.is-hovered .afm-ac {
+  filter: drop-shadow(0 0 5px #e0b15a);
 }
 
 .afm-ac-wrap {
@@ -566,6 +582,74 @@ body {
 .afm-twy-label {
   color: #f0c56a;
   font-size: 11px;
+}
+
+.afm-icao-label-marker {
+  background: none !important;
+  border: 0 !important;
+}
+
+.afm-icao-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border-radius: 1px;
+  color: #d6dde2;
+  background: rgb(14 17 22 / 0.7);
+  border: 1px solid rgb(122 158 170 / 0.35);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+}
+
+.afm-airspace-label-marker {
+  background: none !important;
+  border: 0 !important;
+}
+
+.afm-airspace-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border-radius: 1px;
+  background: rgb(14 17 22 / 0.72);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+}
+
+.afm-airspace-label--B {
+  color: #9ec4ce;
+  border: 1px solid rgb(122 158 170 / 0.45);
+}
+
+.afm-airspace-label--C {
+  color: #e0b8cc;
+  border: 1px solid rgb(201 137 168 / 0.45);
+}
+
+.afm-airspace-label--D {
+  color: #a8c8d2;
+  border: 1px solid rgb(142 180 192 / 0.4);
+  border-style: dashed;
+}
+
+.afm-airspace-label--E {
+  color: #d4c4a8;
+  border: 1px solid rgb(196 165 116 / 0.4);
+  border-style: dashed;
 }
 
 .emergency-squawk {

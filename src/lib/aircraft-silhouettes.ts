@@ -1,8 +1,13 @@
 /**
- * Birds-eye aircraft silhouettes for the live radar layer.
- * Paths adapted from FlightAware dump1090 / tar1090 marker shapes
- * (the same family used by FlightAware & ADS-B Exchange-style maps).
+ * Birds-eye traffic silhouettes for the live radar layer.
+ *
+ * Marker planforms are GPL-2.0-or-later shapes from wiedehopf/tar1090
+ * (same family ADS-B Exchange uses). See `third_party/tar1090-markers/`.
+ * Classification rules use public ICAO type designators and ADS-B emitter
+ * categories (DO-260B).
  */
+
+import { TAR1090_SHAPES } from "../../third_party/tar1090-markers/shapes";
 
 export type AircraftSilhouette =
   | "heavy_jet"
@@ -10,80 +15,102 @@ export type AircraftSilhouette =
   | "small_jet"
   | "piston_twin"
   | "piston_single"
-  | "helicopter";
+  | "helicopter"
+  | "balloon"
+  | "blimp";
 
 export type SilhouetteDef = {
   label: string;
   color: string;
   className: string;
-  /** Native marker width (px) — used for DivIcon sizing */
-  iconPx: number;
-  viewBox: string;
-  path: string;
+  /**
+   * Overall map scale multiplier applied to the upstream tar1090 `w`/`h`
+   * (those values are already tuned as pixel sizes at scale=1).
+   */
+  scale: number;
+  /** Balloons drift — don't spin the icon with ADS-B track. */
+  noRotate?: boolean;
 };
 
+/** Visual metadata + sizing; SVG geometry comes from tar1090 shapes. */
 export const SILHOUETTE_STYLE: Record<AircraftSilhouette, SilhouetteDef> = {
   heavy_jet: {
     label: "Heavy",
     color: "#1D4ED8",
     className: "afm-ac--heavy-jet",
-    iconPx: 38,
-    viewBox: "0 0 28 29",
-    path: 'M9,28.35c0-.16-.17-1,.23-1.36.65-.59,2.82-2.38,3.4-2.86-.51-1.33-.59-5.15-.57-8.22L10,16,.25,19v-.34a1.78,1.78,0,0,1,.82-1.5l7.78-5.07a4.87,4.87,0,0,1-.51-3l0-.22.23,0h2.26l0,.22a8.32,8.32,0,0,1,0,1.81l1.21-.81c0-6.79.18-9.58,1.91-9.87,1.7.14,2,3,2,9.85L17.3,11a8.3,8.3,0,0,1,0-1.8l0-.22h2.51v.24a4.87,4.87,0,0,1-.51,3l7.66,5a1.77,1.77,0,0,1,.8,1.5V19L18,16l-2-.06c0,3.06-.06,6.88-.57,8.21a28.87,28.87,0,0,1,3.5,3A2,2,0,0,1,19,28.34l-.05.31L14.6,26.71c-.14,1.85-.41,1.85-.6,1.85s-.47,0-.6-1.84L9,28.66Z',
+    scale: 1.15,
   },
   midsize_jet: {
     label: "Airliner",
     color: "#2563EB",
     className: "afm-ac--midsize-jet",
-    iconPx: 34,
-    viewBox: "0 0 25 26",
-    path: 'M12.51,25.75c-.26,0-.74-.71-.86-1.41l-3.33.86L8,25.29l.08-1.41.11-.07c1.13-.68,2.68-1.64,3.2-2-.37-1.06-.51-3.92-.43-8.52v0L8,13.31C5.37,14.12,1.2,15.39,1,15.5a.5.5,0,0,1-.21,0,.52.52,0,0,1-.49-.45,1,1,0,0,1,.52-1l1.74-.91c1.36-.71,3.22-1.69,4.66-2.43a4,4,0,0,1,0-.52c0-.69,0-1,0-1.14l.25-.13H7.16A1.07,1.07,0,0,1,8.24,7.73,1.12,1.12,0,0,1,9.06,8a1.46,1.46,0,0,1,.26.87L9.08,9h.25c0,.14,0,.31,0,.58l1.52-.84c0-1.48,0-7.06,1.1-8.25a.74.74,0,0,1,1.13,0c1.15,1.19,1.13,6.78,1.1,8.25l1.52.84c0-.32,0-.48,0-.58l.25-.13H15.7A1.46,1.46,0,0,1,16,8a1.11,1.11,0,0,1,.82-.28,1.06,1.06,0,0,1,1.08,1.16V9c0,.19,0,.48,0,1.17a4,4,0,0,1,0,.52c1.75.9,4.4,2.29,5.67,3l.73.38a.9.9,0,0,1,.5,1,.55.55,0,0,1-.5.47h0l-.11,0c-.28-.11-4.81-1.49-7.16-2.2H14.06v0c.09,4.6-.06,7.46-.43,8.52.52.33,2.07,1.29,3.2,2l.11.07L17,25.29l-.33-.09-3.33-.86c-.12.7-.6,1.41-.86,1.41h0Z',
+    scale: 1.12,
   },
   small_jet: {
     label: "Bizjet",
     color: "#60A5FA",
     className: "afm-ac--small-jet",
-    iconPx: 30,
-    viewBox: "0 0 18 24",
-    path: 'M9.44,23c-.1.6-.35.6-.44.6s-.34,0-.44-.6l-3,.67V22.6A.54.54,0,0,1,6,22.05l2.38-1.12L8,19.33H6.69l0-.2a8.23,8.23,0,0,1-.14-3.85l.06-.18H7.73V13.19h-2L.26,14.29v-.93c0-.28.07-.46.22-.53l7.25-3.6V3.85A4.47,4.47,0,0,1,8.83.49L9,.34l.17.15a4.47,4.47,0,0,1,1.1,3.36V9.23l7.25,3.6c.14.07.22.25.22.53v.93l-5.51-1.1h-2V15.1h1.17l.06.18a8.24,8.24,0,0,1-.15,3.84l0,.2H10l-.36,1.6,2.43,1.14a.52.52,0,0,1,.35.53v1.08Z',
+    scale: 1.2,
   },
   piston_twin: {
     label: "Twin Prop",
     color: "#10B981",
     className: "afm-ac--piston-twin",
-    iconPx: 28,
-    viewBox: "0 0 19 16",
-    path: 'M9.5,15.75c-.21,0-.34-.17-.41-.51l-2.88.23v-.27c0-.78,0-1.11.28-1.13L9,13.1c-.31-1.86-.55-5-.59-5.55l-.08-.09H6.08L.25,6.54v-1A.43.43,0,0,1,.67,5l3.75-.27L5,4.45V3.53H4.73V2.7a.35.35,0,0,1,.34-.35h.07c.12-.52.26-.83.54-.83s.42.31.53.83h.07a.35.35,0,0,1,.34.35v.83H6.36v1l2-.08C8.42.81,9.09.25,9.49.25s1.09.55,1.12,4.21l2,.08v-1h-.25V2.7a.35.35,0,0,1,.34-.35h.07c.12-.52.26-.83.53-.83s.42.31.54.83h.07a.35.35,0,0,1,.34.35v.83H14v.92l.57.32L18.32,5a.42.42,0,0,1,.43.46v1L13,7.46H10.71l-.08.09c0,.56-.27,3.68-.59,5.55l2.46,1c.28,0,.28.35.28,1.13v.27l-2.88-.23C9.84,15.58,9.71,15.75,9.5,15.75Z',
+    scale: 1.2,
   },
   piston_single: {
     label: "Single Prop",
     color: "#059669",
     className: "afm-ac--piston-single",
-    iconPx: 26,
-    viewBox: "0 0 17 13",
-    path: 'M8.51,12.75c-.17,0-2-.27-2.56-.35A.41.41,0,0,1,5.6,12V10.87a.41.41,0,0,1,.32-.4l1.81-.37L7.36,6.64H4.75L.6,6a.41.41,0,0,1-.35-.41V4a.41.41,0,0,1,.38-.41l4.09-.28h2.6v-.4l.25,0-.24-.08c0-.21.1-.76.12-1.06A.9.9,0,0,1,8,.94L8.12.54A.41.41,0,0,1,8.5.25a.4.4,0,0,1,.39.29L9,.95a.91.91,0,0,1,.53.75c0,.33.11,1,.13,1.11v.46h2.57l4.12.28a.41.41,0,0,1,.38.41V5.63A.41.41,0,0,1,16.4,6l-4.1.59H9.64L9.26,10.1l1.81.36a.41.41,0,0,1,.32.4V12a.41.41,0,0,1-.34.41c-.56.08-2.37.35-2.55.35Z',
+    scale: 1.18,
   },
   helicopter: {
     label: "Helicopter",
     color: "#F97316",
     className: "afm-ac--helicopter",
-    iconPx: 28,
-    viewBox: "0 0 16 18",
-    path: 'M8,17.75c-1.38,0-2.46-.63-2.46-1.43,0-.6.58-1.1,1.49-1.32V12.06A5.27,5.27,0,0,1,6,9.53L1.1,13.6l-.75-1L5.78,8.09c0-.25,0-.51,0-.77a12.28,12.28,0,0,1,.09-1.49L.38,1.24l.7-.89,5,4.2C6.48,3,7.17,2.1,8,2.1s1.52,1,1.91,2.57l5-4.21.75,1L10.1,6.07a12.4,12.4,0,0,1,.06,1.24c0,.22,0,.44,0,.65l5.47,4.59-.7.89L10,9.31a8.44,8.44,0,0,1-.35,1.4,3.83,3.83,0,0,1-.55,1.11L9,12v3c.91.22,1.49.72,1.49,1.32C10.46,17.12,9.38,17.75,8,17.75Z',
+    scale: 1.15,
+  },
+  balloon: {
+    label: "Balloon",
+    color: "#F472B6",
+    className: "afm-ac--balloon",
+    scale: 1.35,
+    noRotate: true,
+  },
+  blimp: {
+    label: "Blimp",
+    color: "#A78BFA",
+    className: "afm-ac--blimp",
+    scale: 1.05,
   },
 };
 
-/** @deprecated Use SILHOUETTE_STYLE[kind].path */
+/** Pixel size for a silhouette at the given zoom/selection scale. */
+export function silhouetteSize(
+  kind: AircraftSilhouette,
+  zoomScale: number = 1
+): { width: number; height: number } {
+  const shape = TAR1090_SHAPES[kind];
+  const s = SILHOUETTE_STYLE[kind].scale * zoomScale;
+  return {
+    width: Math.round(shape.w * s),
+    height: Math.round(shape.h * s),
+  };
+}
+
+/** @deprecated Prefer silhouetteSize() / TAR1090_SHAPES */
 export const SILHOUETTE_SVG: Record<AircraftSilhouette, string> = {
-  heavy_jet: SILHOUETTE_STYLE.heavy_jet.path,
-  midsize_jet: SILHOUETTE_STYLE.midsize_jet.path,
-  small_jet: SILHOUETTE_STYLE.small_jet.path,
-  piston_twin: SILHOUETTE_STYLE.piston_twin.path,
-  piston_single: SILHOUETTE_STYLE.piston_single.path,
-  helicopter: SILHOUETTE_STYLE.helicopter.path,
+  heavy_jet: TAR1090_SHAPES.heavy_jet.path,
+  midsize_jet: TAR1090_SHAPES.midsize_jet.path,
+  small_jet: TAR1090_SHAPES.small_jet.path,
+  piston_twin: TAR1090_SHAPES.piston_twin.path,
+  piston_single: TAR1090_SHAPES.piston_single.path,
+  helicopter: TAR1090_SHAPES.helicopter.path,
+  balloon: TAR1090_SHAPES.balloon.path,
+  blimp: TAR1090_SHAPES.blimp.path,
 };
 
-/** ICAO type designator → silhouette (FlightAware dump1090 specials). */
+/** ICAO type designator → silhouette overrides (public Doc 8643 codes). */
 const TYPE_OVERRIDES: Record<string, AircraftSilhouette> = {
   A10: "small_jet", A148: "small_jet", A225: "heavy_jet", A3: "small_jet", A37: "small_jet",
   A5: "piston_single", A6: "small_jet", A700: "small_jet", AC80: "piston_twin", AC90: "piston_twin",
@@ -133,7 +160,14 @@ const TYPE_OVERRIDES: Record<string, AircraftSilhouette> = {
   TRIM: "piston_twin", TRIS: "piston_twin", TRMA: "piston_twin", TU22: "small_jet", VAUT: "small_jet",
   Y130: "small_jet", Y141: "midsize_jet", YK28: "small_jet", YK38: "midsize_jet", YK40: "midsize_jet",
   YK42: "midsize_jet", YURO: "small_jet",
+  BALL: "balloon", SHIP: "blimp",
 };
+
+/** Hot-air / gas balloon ICAO types (BALL + AX size classes). */
+const BALLOON_RE = /^(BALL|AX[0-9]{1,2}|BB[0-9]|FB[0-9])/i;
+
+/** Airship / blimp ICAO types (SHIP + common Goodyear / Zeppelin codes). */
+const BLIMP_RE = /^(SHIP|ZEP|ASRG|GZ20|GZ22|GZ23|N2A|AIRSHIP)/i;
 
 const HELI_RE =
   /^(EC|AS[0-9]|BK|R22|R44|R66|B06|B407|B412|B429|S76|S92|H60|UH60|UH1|AH64|AH1|CH47|CH53|MH60|MD50|MD52|MD60|MD90|A109|A119|A139|A169|AW139|AW169|AW189|H130|H145|H125|H135|H155|H175|S300|B212|B407|B505|EC20|EC30|EC35|EC45|EC55)/i;
@@ -158,17 +192,38 @@ function normalizeType(raw: string | null | undefined): string {
 
 /**
  * Map ICAO type + ADS-B emitter category to a birds-eye silhouette.
+ *
+ * Lighter-than-air (balloons / blimps) come from:
+ * - ICAO special types `BALL` / `SHIP`
+ * - ADS-B emitter category `B2` (DO-260B Set B: lighter-than-air)
+ * - Groundspeed heuristic when B2 lacks a specific type (slow = balloon)
  */
 export function classifySilhouette(
   typeCode: string | null | undefined,
   emitterCategory?: string | null,
-  dbFlags?: number
+  dbFlags?: number,
+  groundspeedKt?: number | null
 ): AircraftSilhouette {
   const type = normalizeType(typeCode);
   const emitter = (emitterCategory ?? "").toUpperCase();
 
   if (type && TYPE_OVERRIDES[type]) {
     return TYPE_OVERRIDES[type];
+  }
+
+  if (type && BALLOON_RE.test(type)) return "balloon";
+  if (type && BLIMP_RE.test(type)) return "blimp";
+
+  // ADS-B DO-260B Set B: B2 = lighter-than-air (airship or balloon).
+  if (emitter === "B2") {
+    if (
+      groundspeedKt != null &&
+      Number.isFinite(groundspeedKt) &&
+      groundspeedKt >= 35
+    ) {
+      return "blimp";
+    }
+    return "balloon";
   }
 
   if (emitter === "A7" || (type && HELI_RE.test(type))) {
@@ -199,15 +254,28 @@ export function classifySilhouette(
   return "piston_single";
 }
 
+/**
+ * Render a tar1090 marker SVG the same way upstream does
+ * (`svgShapeToSVG`: stroke = 2 × base × strokeScale, paint-order stroke).
+ *
+ * @param sizePx  Target max dimension in CSS pixels (defaults to scaled w/h).
+ */
 export function silhouetteSvgMarkup(
   kind: AircraftSilhouette,
   color: string,
-  size?: number,
+  sizePx?: number,
   stroke: string = "#0a0a0a"
 ): string {
-  const def = SILHOUETTE_STYLE[kind];
-  const px = size ?? def.iconPx;
-  return `<svg viewBox="${def.viewBox}" width="${px}" height="${px}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="${color}" fill-opacity="1" stroke="${stroke}" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" d="${def.path}"/></svg>`;
+  const shape = TAR1090_SHAPES[kind];
+  const native = silhouetteSize(kind, 1);
+  const maxNative = Math.max(native.width, native.height);
+  const target = sizePx ?? maxNative;
+  const scale = target / Math.max(shape.w, shape.h);
+  const wi = Math.round(shape.w * scale);
+  const he = Math.round(shape.h * scale);
+  // Match tar1090 stroke formula with a ~0.55 base so heli (strokeScale 3) stays sane
+  const strokeWidth = 2 * 0.55 * shape.strokeScale;
+  return `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="${shape.viewBox}" width="${wi}" height="${he}" aria-hidden="true"><path paint-order="stroke" fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}" d="${shape.path}"/></svg>`;
 }
 
 /** ADS-B reports `alt_baro: "ground"` which we normalize to 0. */
@@ -255,7 +323,7 @@ function shadeHex(hex: string, amount: number): string {
 /**
  * Ground = slate gray. Airborne = category hue, darker near the surface and
  * lighter at cruise / high altitude (roughly surface → FL450).
- * Prefer altitudeRainbowColor() for ADSBX-style radar.
+ * Prefer altitudeRainbowColor() for the live radar palette.
  */
 export function aircraftMarkerColor(
   category: AircraftSilhouette,

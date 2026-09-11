@@ -1,5 +1,5 @@
 /**
- * Live ADS-B traffic helpers (airplanes.live / ADSBExchange v2 schema).
+ * Live ADS-B traffic helpers (airplanes.live / adsb.lol JSON aircraft lists).
  */
 
 import {
@@ -35,7 +35,7 @@ export interface LiveAircraft {
   squawk: string | null;
 }
 
-/** Upstream aircraft row (subset of ADSBExchange v2 / airplanes.live). */
+/** Upstream aircraft row (subset of airplanes.live / adsb.lol payloads). */
 export interface AirplanesLiveAc {
   hex?: string;
   flight?: string;
@@ -73,7 +73,7 @@ function parseAltitude(alt: number | string | undefined): number | null {
 }
 
 export function classifyTraffic(ac: AirplanesLiveAc): AircraftSilhouette {
-  return classifySilhouette(ac.t, ac.category, ac.dbFlags);
+  return classifySilhouette(ac.t, ac.category, ac.dbFlags, ac.gs);
 }
 
 export function normalizeAircraft(ac: AirplanesLiveAc): LiveAircraft | null {

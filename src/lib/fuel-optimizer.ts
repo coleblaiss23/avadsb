@@ -71,7 +71,7 @@ export function optimizeFuelStops({
   const destinationPrice = priceForType(destination, input.fuelType);
   if (destinationPrice == null) {
     throw new Error(
-      `No ${input.fuelType} price available at destination ${destination.icao}`
+      `No verified ${input.fuelType} price at destination ${destination.icao}. Crowdsource a report or try another airport.`
     );
   }
 

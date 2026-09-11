@@ -32,10 +32,11 @@ export async function GET(request: Request) {
     );
   }
 
-  const airport = await resolveAirport(icao);
-  const elev = airport?.elevation;
-
+  let elev = 0;
   try {
+    const airport = await resolveAirport(icao);
+    elev = airport?.elevation ?? 0;
+
     const live = await fetchMetar(icao, { elevationFt: elev });
     if (live) {
       return NextResponse.json({
@@ -44,11 +45,11 @@ export async function GET(request: Request) {
       });
     }
   } catch {
-    // fall through
+    // fall through to the tagged demo METAR
   }
 
   return NextResponse.json({
-    metar: getMockMetar(icao, elev ?? 0),
+    metar: getMockMetar(icao, elev),
     source: "demo",
   });
 }
