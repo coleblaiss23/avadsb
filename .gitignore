@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw FAA / OurAirports dumps (regenerate with npm run build:airports)
+/data/raw/

@@ -1,36 +1,150 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AvADSB
 
-## Getting Started
+Interactive web app for General Aviation pilots combining **unfiltered live ADS-B radar**, **METAR/ATIS**, crosswind tools, and cheapest **100LL** / **Jet-A** fuel stops along a planned route.
 
-First, run the development server:
+## Stack
+
+- **Next.js** (App Router) + TypeScript
+- **Tailwind CSS** + Radix/Shadcn-style UI (light theme)
+- **Leaflet / React-Leaflet** + CARTO Voyager tiles
+- **TanStack Query** + **Zustand**
+- **OurAirports / FAA-compatible** US catalog in `public/data/us-airports.json`
+- **Supabase** (PostgreSQL + PostGIS) schema ready for production sync
+
+## Quick start
 
 ```bash
+npm install
+npm run build:airports   # optional — rebuild US catalog from OurAirports CSVs
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Default route: **KAPA → KSDL**, 25 NM corridor, 100LL. Click **Find cheapest fuel stops**.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Search origin/dest by ICAO (`KSDL`) or FAA ID (`SDL`).
 
-## Learn More
+### Example SEO pages
 
-To learn more about Next.js, take a look at the following resources:
+- [/routes/kapa-to-ksdl](http://localhost:3000/routes/kapa-to-ksdl)
+- [/weather/KAPA](http://localhost:3000/weather/KAPA) — live METAR + density altitude
+- [/airports/KAPA](http://localhost:3000/airports/KAPA) — runway list + weather
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Pilot utilities
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **METAR badges** — flight category (VFR/MVFR/IFR/LIFR) from AviationWeather.gov
+- **Runway & Crosswind Analyzer** — wind components vs catalog runway headings
+- **Hobbs Splitter** — wet/dry cost split (header toolbar)
 
-## Deploy on Vercel
+METAR API: `GET /api/metar?icao=KAPA`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Airport detail (with runways): `GET /api/airports/KAPA`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## How the optimizer works
+
+1. **Direct distance** — Haversine great-circle (nm) between origin and destination.
+2. **Corridor** — rectangular buffer of ± max detour nm around the track (cross-track filter).
+3. **Candidate airports** — in corridor, excluding endpoints, with a price for the selected fuel type.
+4. **Net savings**
+
+   ```
+   Net Savings = (Fuel Gallons Needed × Price Delta) − (Detour Time Hours × Hourly DOC)
+   ```
+
+   - Price delta = destination $/gal − stop $/gal  
+   - Detour time = extra path nm ÷ cruise speed  
+   - Fuel needed ≈ burn × (stop→dest hours + 45 min reserve), capped at 90% tank
+
+5. Results ranked by net $ saved (highest first).
+
+Map markers: **green** &lt; $5.50 · **yellow** $5.50–$6.80 · **red** &gt; $6.80.
+
+## Crowdsourced & live prices
+
+`GET /api/fuel?icao=KAPA&fuelType=100LL` resolves prices with fallback:
+
+1. **AirNav / FBO API** when `AIRNAV_API_KEY` (+ `AIRNAV_API_URL`) are set  
+2. **Pilot crowdsource** reports from the last **72 hours**  
+3. **Demo synthetic** quote (clearly tagged)
+
+`POST /api/fuel` accepts crowdsourced updates. Every result shows a verification tag, e.g. `Updated 3 hrs ago via Demo Quote`.
+
+Optimize a corridor:
+
+```bash
+curl -X POST http://localhost:3000/api/optimize \
+  -H 'Content-Type: application/json' \
+  -d '{"originIcao":"KAPA","destinationIcao":"KSDL","aircraft":{"cruiseSpeedKts":140,"fuelBurnGph":13.5,"tankCapacityGal":88,"hourlyOperatingCost":65},"maxDetourNm":25,"fuelType":"100LL"}'
+```
+
+Airport autocomplete: `GET /api/airports/search?q=SDL`
+
+---
+
+## Supabase setup (step-by-step)
+
+### 1. Create a project
+
+1. Go to [https://supabase.com](https://supabase.com) → **New project**.
+2. Note the **Project URL** and **anon** / **service_role** keys (Settings → API).
+
+### 2. Enable PostGIS & create tables
+
+1. Open **SQL Editor** → **New query**.
+2. Paste the full contents of [`supabase/schema.sql`](supabase/schema.sql).
+3. Click **Run**. This enables PostGIS, creates `airports` / `fuel_prices` / `price_reports`, and RLS.
+
+### 3. Load US airports
+
+1. Download OurAirports dumps (or use `data/raw/` if present).
+2. `npm run build:airports` writes `public/data/us-airports.json` (~25k US facilities).
+3. ETL that JSON into Supabase `airports` for production PostGIS corridor queries.
+
+### 4. Environment variables
+
+Copy `.env.example` → `.env.local` and set Supabase + optional AirNav keys.
+
+---
+
+## Project structure
+
+```
+src/
+  app/
+    page.tsx                 # Split-screen planner + map
+    routes/[slug]/page.tsx   # SEO popular-route landings
+    api/fuel-updates/        # Crowdsource POST + rate limit
+  components/
+    planner/                 # Form, results, shell
+    map/                     # Leaflet map (SSR-safe loader)
+    fuel/                    # Price update modal
+    ads/                     # AdSense placeholders
+    ui/                      # Button, Input, Dialog, …
+  data/airports.ts           # 50 airports + mock prices
+  lib/geo.ts                 # Haversine, corridor, cross-track
+  lib/fuel-optimizer.ts      # Net savings matrix
+  store/planner-store.ts     # Zustand
+  types/index.ts
+supabase/
+  schema.sql
+  seed.sql
+```
+
+## Ads & analytics placeholders
+
+- Header leaderboard, sidebar rectangle, bottom in-feed: `src/components/ads/AdSlot.tsx`
+- Privacy-first analytics comment in `src/app/layout.tsx` (e.g. Plausible)
+
+## Scripts
+
+```bash
+npm run dev      # development
+npm run build    # production build
+npm run start    # serve build
+npm run lint     # ESLint
+```
+
+## License
+
+Private / demo — verify all fuel prices with the FBO before flight.

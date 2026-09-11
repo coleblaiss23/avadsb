@@ -1,0 +1,14 @@
+{
+  "count": 24927,
+  "generatedAt": "2026-09-10T18:41:59.374Z",
+  "source": "OurAirports (FAA-compatible US facilities)",
+  "types": [
+    "large_airport",
+    "medium_airport",
+    "small_airport",
+    "seaplane_base",
+    "heliport"
+  ],
+  "minRunwayFt": 0,
+  "note": "Includes heliports/seaplane for search; fuel corridor uses runway-capable fields only."
+}

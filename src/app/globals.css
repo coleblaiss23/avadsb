@@ -1,26 +1,576 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Document chrome matches the radar — no light flash behind panels */
+  --background: #0e1116;
+  --foreground: #efe6d4;
+  --panel: #161b22;
+  --panel-border: #3a342c;
+  /* Semantic (fuel / weather) — not chrome accents */
+  --accent: #3d6b78;
+  --accent-dark: #0e1116;
+  --route: #8a6a3a;
+  /* FAA flight category — hue is the standard, not a theme accent */
+  --vfr: #3dcc6a;
+  --mvfr: #4d8dff;
+  --ifr: #ff4d4d;
+  --lifr: #ff4dff;
+  --fuel-avg: #c4b396;
+  /* Night-vision chrome — warm charcoal, amber text, no pure white */
+  --ink: #0e1116;
+  --ink-elevated: #161b22;
+  --ink-border: #3a342c;
+  --ink-panel: #12161c;
+  /* Body and secondary text sit well above WCAG AA against --ink */
+  --ink-text: #efe6d4;
+  --ink-muted: #d4c4a8;
+  --ink-subtle: #c4b396;
+  --bezel: #6b5a40;
+  --scope-cyan: #7a9eaa;
+  --scope-cyan-dim: #4d727e;
+  --signal-green: #c4a46a;
+  --signal-amber: #e0b15a;
+  --signal-red: #ff5a4a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-route: var(--route);
+  --color-vfr: var(--vfr);
+  --color-ifr: var(--ifr);
+  --color-mvfr: var(--mvfr);
+  --color-lifr: var(--lifr);
+  --color-ink-text: var(--ink-text);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-muted: var(--ink-muted);
+  --font-sans: var(--font-ibm-plex), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-barlow), var(--font-ibm-plex), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-avionics {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.glass-panel {
+  background: var(--ink-elevated);
+  border: 1px solid var(--ink-border);
+}
+
+.flight-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--ink-border);
+  border-left: 2px solid var(--bezel);
+  background: var(--ink-elevated);
+  padding: 0.65rem 0.85rem;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.flight-strip:hover {
+  border-color: var(--bezel);
+  border-left-color: var(--scope-cyan);
+  background: #1a2028;
+}
+
+.scope-bezel {
+  border: 1px solid var(--ink-border);
+  background: rgb(14 17 22 / 0.92);
+  border-radius: 2px;
+}
+
+.leaflet-container {
+  font: inherit;
+  background: #0e1116;
+  z-index: 0;
+  isolation: isolate;
+  overflow: hidden !important;
+  width: 100%;
+  height: 100%;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 1000;
+}
+
+.leaflet-control {
+  z-index: 1001;
+}
+
+.afm-ac-marker {
+  background: transparent !important;
+  border: none !important;
+  opacity: 1 !important;
+}
+
+.afm-ac {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: none;
+  transform: rotate(var(--ac-rot, 0deg));
+  transform-origin: center center;
+  will-change: transform;
+  pointer-events: auto;
+}
+
+.afm-ac svg {
+  display: block;
+  overflow: visible;
+  opacity: 1;
+  mix-blend-mode: normal;
+  filter: none;
+}
+
+.afm-ac--heavy-jet {
+  color: #1d4ed8;
+}
+
+.afm-ac--midsize-jet {
+  color: #2563eb;
+}
+
+.afm-ac--small-jet {
+  color: #60a5fa;
+}
+
+.afm-ac--piston-twin {
+  color: #10b981;
+}
+
+.afm-ac--piston-single {
+  color: #059669;
+}
+
+.afm-ac--helicopter {
+  color: #f97316;
+}
+
+.afm-ac--ground {
+  opacity: 1;
+}
+
+.afm-ac-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  line-height: 0;
+}
+
+.afm-ac-wrap.is-selected .afm-ac {
+  filter: none;
+}
+
+.afm-ac-label {
+  margin-top: 1px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgb(14 17 22 / 0.88);
+  border: 1px solid rgb(42 48 56 / 0.9);
+  color: var(--ink-text);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
+  pointer-events: none;
+}
+
+.leaflet-container.afm-radar-dark {
+  background: #0e1116;
+}
+
+.afm-dark-popup .leaflet-popup-content-wrapper {
+  background: #161b22;
+  color: var(--ink-text);
+  border: 1px solid #2a3038;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.afm-dark-popup .leaflet-popup-tip {
+  background: #161b22;
+  border: none;
+}
+
+.afm-dark-popup .leaflet-popup-content {
+  margin: 10px 12px;
+}
+
+.afm-route-tip {
+  background: #161b22 !important;
+  color: var(--ink-text) !important;
+  border: 1px solid #2a3038 !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 5px !important;
+}
+
+.afm-route-tip::before {
+  border-right-color: #2a3038 !important;
+}
+
+.afm-alt-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-muted);
+}
+
+.afm-alt-legend__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.afm-alt-legend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 1px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  flex-shrink: 0;
+}
+
+.afm-ac--ga {
+  color: #10b981;
+}
+
+.afm-ac--commercial {
+  color: #2563eb;
+}
+
+.afm-ac--military {
+  color: #60a5fa;
+}
+
+@keyframes afm-ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* One line only — the loop copy stays beside the first, never stacked under it. */
+.afm-ticker {
+  height: 1.75rem;
+  overflow: hidden;
+  line-height: 1.75rem;
+}
+
+.afm-ticker-track {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: max-content;
+  animation-name: afm-ticker-scroll;
+  animation-duration: var(--ticker-duration, 24s);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+.afm-ticker-copy {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.afm-ticker:hover .afm-ticker-track,
+.afm-ticker:focus-within .afm-ticker-track {
+  animation-play-state: paused;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 2px;
+  background: #161b22;
+  color: var(--ink-text);
+  border: 1px solid #3a342c;
+  box-shadow: none;
+}
+
+.leaflet-popup-tip {
+  background: #161b22;
+}
+
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  background: rgb(14 17 22 / 0.85) !important;
+  color: var(--ink-muted) !important;
+}
+
+.leaflet-control-attribution a {
+  color: #5a8a9a !important;
+}
+
+.afm-pill-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.afm-home-pin-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.afm-home-pin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.afm-home-pin__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 1px;
+  background: #c4a46a;
+  border: 1px solid #0e1116;
+  box-shadow: 0 0 0 1px rgb(90 138 154 / 0.7);
+  flex-shrink: 0;
+}
+
+.afm-home-pin__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-text);
+  text-shadow:
+    0 1px 2px rgb(14 17 22 / 0.9),
+    0 0 6px rgb(14 17 22 / 0.7);
+}
+
+.afm-pill-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.afm-pill-leader {
+  width: 1px;
+  background: #c4a46a;
+  flex-shrink: 0;
+}
+
+.afm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 2px;
+  border: 1px solid #6b5a40;
+  background: #1c1914;
+  color: var(--ink-text);
+}
+
+.afm-pill--low {
+  color: #d4ead0;
+  border-color: #3d7a5c;
+  background: #142018;
+}
+
+.afm-pill--average {
+  color: var(--ink-text);
+  border-color: #6b5a40;
+  background: #1c1914;
+}
+
+.afm-pill--high {
+  color: #f0c4b8;
+  border-color: #b04545;
+  background: #2a1616;
+}
+
+.afm-pill--endpoint {
+  color: var(--ink-text);
+  border-color: #8a6a3a;
+  background: #221c14;
+}
+
+.afm-pill--selected {
+  outline: 2px solid #c4a46a;
+  outline-offset: 1px;
+}
+
+.deck-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #c8ced6;
+}
+
+.deck-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ink-elevated);
+  color: var(--ink-muted);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ink-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.deck-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--ink-border);
+  vertical-align: middle;
+  white-space: nowrap;
+  color: #c8ced6;
+}
+
+.deck-table tbody tr {
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.deck-table tbody tr:hover {
+  background: #1a2028;
+}
+
+.deck-table tbody tr.is-selected {
+  background: rgb(90 138 154 / 0.12);
+  box-shadow: inset 2px 0 0 var(--scope-cyan);
+}
+
+.tool-atmosphere {
+  background-color: var(--ink);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 8% -8%, rgb(90 138 154 / 0.06), transparent 55%),
+    linear-gradient(180deg, #12161c 0%, var(--ink) 42%, #0a0c10 100%);
+  color: #e8edf4;
+}
+
+.tool-atmosphere::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.tool-atmosphere > * {
+  position: relative;
+  z-index: 1;
+}
+
+.instrument-panel {
+  background: var(--ink-elevated);
+  border: 1px solid var(--ink-border);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+}
+
+.instrument-inset {
+  background: #0a0d13;
+  border: 1px solid var(--ink-border);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+/*
+ * Night-vision text lift. Tailwind slate ramps sit under AA on these panels.
+ * Scoped so light dropdowns that opt out with .light-surface are untouched.
+ * No pure white, no strobe — emergency red is left alone.
+ */
+.night-ui :is(
+  .text-slate-50,
+  .text-slate-100,
+  .text-slate-200,
+  .text-slate-700,
+  .text-slate-800,
+  .text-slate-900,
+  .text-white
+) {
+  color: var(--ink-text);
+}
+
+.night-ui :is(.text-slate-300, .text-slate-400, .text-slate-500, .text-slate-600) {
+  color: var(--ink-muted);
+}
+
+.night-ui .placeholder\:text-slate-600::placeholder {
+  color: var(--ink-subtle);
+}
+
+.afm-pavement-marker {
+  background: none;
+  border: 0;
+}
+
+.afm-rwy-label,
+.afm-twy-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 0 2px #0a0d13,
+    0 1px 2px rgb(0 0 0 / 0.95),
+    1px 0 0 #0a0d13,
+    -1px 0 0 #0a0d13,
+    0 1px 0 #0a0d13,
+    0 -1px 0 #0a0d13;
+}
+
+.afm-rwy-label {
+  color: #f4f1ea;
+  font-size: 12px;
+}
+
+.afm-twy-label {
+  color: #f0c56a;
+  font-size: 11px;
+}
+
+.emergency-squawk {
+  border: 1px solid #ff5a4a;
+  background: #3a1210;
+  color: #ffe8d8;
+  box-shadow: inset 0 0 0 1px rgb(255 90 74 / 0.35);
 }
