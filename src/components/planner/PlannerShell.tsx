@@ -52,7 +52,7 @@ export function PlannerShell({ routeBanner }: { routeBanner?: string }) {
             {routeBanner}
           </strong>
           {" — "}
-          
+          <a
             href="/fuel"
             className="font-medium text-[var(--scope-cyan)] hover:underline"
           >
