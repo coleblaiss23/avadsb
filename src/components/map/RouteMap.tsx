@@ -1094,7 +1094,7 @@ export function RouteMap() {
         </AircraftFloatingCard>
       )}
 
-      <div className="pointer-events-none absolute right-3 top-3 z-[1050] flex flex-col items-end gap-2">
+<div className="pointer-events-none absolute right-3 top-[17rem] sm:top-3 z-[1050] flex flex-col items-end gap-2">
         {(result || trackedHex) && (
           <button
             type="button"
