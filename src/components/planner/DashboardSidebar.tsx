@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { AirportNotamFlag } from "@/components/notams/AirportNotamFlag";
 import { AirportAutocomplete } from "@/components/planner/AirportAutocomplete";
-import { TOOL_NAV } from "@/lib/tools-nav";
+import { VISIBLE_TOOL_NAV } from "@/lib/tools-nav";
 import { cn } from "@/lib/utils";
 import { usePlannerStore } from "@/store/planner-store";
 import { useGoToAirport } from "@/hooks/use-home-airport";
@@ -89,7 +89,7 @@ export function DashboardSidebar() {
       <div>
         <p className="mb-2 text-sm font-medium text-slate-400">Tools</p>
         <div className="flex flex-col gap-1.5">
-          {TOOL_NAV.map((card) => (
+        {VISIBLE_TOOL_NAV.map((card) => (
             <Link
               key={card.id}
               href={
