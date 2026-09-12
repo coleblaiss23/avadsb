@@ -13,6 +13,16 @@ export function PlannerShell({ routeBanner }: { routeBanner?: string }) {
   useFlightDeckHotkeys();
   const [deckOpen, setDeckOpen] = useState(true);
 
+  // On phone-sized screens, default to the map instead of the context panel.
+  // Runs once after mount so server-rendered HTML stays consistent, then
+  // adjusts for the visitor's actual viewport.
+  useEffect(() => {
+    const isPhoneWidth = window.matchMedia("(max-width: 1023px)").matches;
+    if (isPhoneWidth) {
+      setDeckOpen(false);
+    }
+  }, []);
+
   useEffect(() => {
     const t = window.setTimeout(
       () => window.dispatchEvent(new Event("resize")),
@@ -42,7 +52,7 @@ export function PlannerShell({ routeBanner }: { routeBanner?: string }) {
             {routeBanner}
           </strong>
           {" — "}
-          <a
+          
             href="/fuel"
             className="font-medium text-[var(--scope-cyan)] hover:underline"
           >
@@ -78,7 +88,6 @@ export function PlannerShell({ routeBanner }: { routeBanner?: string }) {
           <RouteMapLoader />
         </section>
       </div>
-
     </div>
   );
 }
