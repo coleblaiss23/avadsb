@@ -39,13 +39,27 @@ async function fetchUpstream(
   radius: number
 ): Promise<{ ok: true; json: unknown; source: string } | { ok: false; status: number; body: string }> {
   const url = `${host}/v2/point/${lat}/${lon}/${radius}`;
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "AvADSB/0.1 (ADS-B radar layer; local demo)",
-    },
-    cache: "no-store",
-  });
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "AvADSB/0.1 (ADS-B radar layer; local demo)",
+      },
+      cache: "no-store",
+      // Bound the wait so a slow/unresponsive host falls through to the
+      // fallback quickly instead of hanging the whole request.
+      signal: AbortSignal.timeout(6_000),
+    });
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    return {
+      ok: false,
+      status: 0,
+      body: timedOut ? `${host} timed out after 6s` : "Network error reaching upstream",
+    };
+  }
 
   const text = await res.text();
   if (!res.ok) {
